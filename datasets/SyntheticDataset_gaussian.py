@@ -92,14 +92,14 @@ class SyntheticDataset_gaussian(data.Dataset):
     else:
         drawing_primitives = [
             "draw_lines",
-            "draw_polygon",
-            "draw_multiple_polygons",
-            "draw_ellipses",
-            "draw_star",
-            "draw_checkerboard",
-            "draw_stripes",
-            "draw_cube",
-            "gaussian_noise",
+            # "draw_polygon",
+            # "draw_multiple_polygons",
+            # "draw_ellipses",
+            # "draw_star",
+            # "draw_checkerboard",
+            # "draw_stripes",
+            # "draw_cube",
+            # "gaussian_noise",
         ]
     print(drawing_primitives)
 
@@ -116,6 +116,12 @@ class SyntheticDataset_gaussian(data.Dataset):
         synthetic_dataset.set_random_state(
             np.random.RandomState(config["generation"]["random_seed"])
         )
+
+
+        image_size = config["generation"]["image_size"]
+        bg_config = config["generation"]["params"]["generate_background"]
+
+
         for split, size in self.config["generation"]["split_sizes"].items():
             im_dir, pts_dir = [Path(temp_dir, i, split) for i in ["images", "points"]]
             im_dir.mkdir(parents=True, exist_ok=True)
@@ -126,11 +132,18 @@ class SyntheticDataset_gaussian(data.Dataset):
                     config["generation"]["image_size"],
                     **config["generation"]["params"]["generate_background"],
                 )
+
                 points = np.array(
                     getattr(synthetic_dataset, primitive)(
-                        image, **config["generation"]["params"].get(primitive, {})
+                        image, 
+                        image_size,
+                        bg_config,
+                        **config["generation"]["params"].get(primitive, {})
                     )
                 )
+
+                raise
+
                 points = np.flip(points, 1)  # reverse convention with opencv
 
                 b = config["preprocessing"]["blur_size"]

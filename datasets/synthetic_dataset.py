@@ -3,6 +3,10 @@
 import cv2 as cv
 import numpy as np
 import math
+import copy
+
+from pathlib import Path
+
 
 random_state = np.random.RandomState(None)
 
@@ -47,6 +51,50 @@ def add_salt_and_pepper(img):
     img[black > 0] = 0
     cv.blur(img, (5, 5), img)
     return np.empty((0, 2), dtype=np.int)
+
+def background_generator(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
+                        max_rad_ratio=0.05, min_kernel_size=50, max_kernel_size=300):
+    """ Generate a customized background image
+    Parameters:
+      size: size of the image
+      nb_blobs: number of circles to draw
+      min_rad_ratio: the radius of blobs is at least min_rad_size * max(size)
+      max_rad_ratio: the radius of blobs is at most max_rad_size * max(size)
+      min_kernel_size: minimal size of the kernel
+      max_kernel_size: maximal size of the kernel
+    """
+
+    img = np.zeros(size, dtype=np.uint8)
+    dim = max(size)
+    cv.randu(img, 0, 255)
+    cv.threshold(img, random_state.randint(256), 255, cv.THRESH_BINARY, img)
+    background_color = int(np.mean(img))
+    blobs = np.concatenate([random_state.randint(0, size[1], size=(nb_blobs, 1)),
+                            random_state.randint(0, size[0], size=(nb_blobs, 1))],
+                           axis=1)
+    colors = [get_random_color(background_color) for _ in range(nb_blobs)]
+    radius = [np.random.randint(int(dim * min_rad_ratio),
+                                int(dim * max_rad_ratio)) for _ in range(nb_blobs)]
+    directions = np.concatenate([random_state.randint(0, 20, size=(nb_blobs, 1))-10,
+                            random_state.randint(0, 20, size=(nb_blobs, 1))-10],
+                           axis=1)
+    kernel_size = random_state.randint(min_kernel_size, max_kernel_size)
+
+
+    t = 0
+
+
+    while True:
+        canvas = copy.deepcopy(img)
+        for i in range(nb_blobs):
+            cv.circle(canvas, 
+                    (blobs[i][0] + t*directions[i][0], blobs[i][1] + t*directions[i][1]),
+                    radius[i],
+                    colors[i], -1)
+
+        cv.blur(canvas, (kernel_size, kernel_size), canvas)
+        t += 1
+        yield canvas
 
 
 def generate_background(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
@@ -135,11 +183,25 @@ def keep_points_inside(points, size):
     return points[mask, :]
 
 
-def draw_lines(img, nb_lines=10):
+def draw_lines(img, img_size, bg_config, nb_lines=10):
     """ Draw random lines and output the positions of the endpoints
     Parameters:
       nb_lines: maximal number of lines
     """
+    im_dir = 'temp'
+
+    # img = np.zeros((100, 50))
+    # cv.imwrite(str(Path(im_dir, "{:03d}.png".format(100))), img)
+    # raise
+
+    for i, img in enumerate(background_generator(img_size, **bg_config)):
+        print(i, img.shape)
+        if i > 100:
+            break
+        cv.imwrite(str(Path(im_dir, "{:03d}.png".format(i))), img)
+    
+    raise
+
     num_lines = random_state.randint(1, nb_lines)
     segments = np.empty((0, 4), dtype=np.int)
     points = np.empty((0, 2), dtype=np.int)
