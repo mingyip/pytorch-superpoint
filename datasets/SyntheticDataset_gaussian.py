@@ -60,6 +60,7 @@ class SyntheticDataset_gaussian(data.Dataset):
             "split_sizes": {"training": 10000, "validation": 200, "test": 500},
             "image_size": [960, 1280],
             "random_seed": 0,
+            "num_frames": 10,
             "params": {
                 "generate_background": {
                     "min_kernel_size": 150,
@@ -120,6 +121,7 @@ class SyntheticDataset_gaussian(data.Dataset):
 
         image_size = config["generation"]["image_size"]
         bg_config = config["generation"]["params"]["generate_background"]
+        frames = config["generation"]["num_frames"]
 
 
         for split, size in self.config["generation"]["split_sizes"].items():
@@ -135,7 +137,7 @@ class SyntheticDataset_gaussian(data.Dataset):
 
                 points = np.array(
                     getattr(synthetic_dataset, primitive)(
-                        image, 
+                        image,
                         image_size,
                         bg_config,
                         **config["generation"]["params"].get(primitive, {})

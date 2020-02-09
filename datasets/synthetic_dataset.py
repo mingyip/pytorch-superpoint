@@ -25,6 +25,15 @@ def get_random_color(background_color):
     return color
 
 
+def get_random_rotation():
+    """ Output a Rotation matrix between -5 deg and 5 deg"""
+    uni = random_state.uniform(-3, 3)
+    theta = np.radians(uni)
+    c, s = np.cos(theta), np.sin(theta)
+    R = np.array(((c,-s), (s, c)))
+    return R
+
+
 def get_different_color(previous_colors, min_dist=50, max_count=20):
     """ Output a color that contrasts with the previous colors
     Parameters:
@@ -188,41 +197,70 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
     Parameters:
       nb_lines: maximal number of lines
     """
+
     im_dir = 'temp'
-
-    # img = np.zeros((100, 50))
-    # cv.imwrite(str(Path(im_dir, "{:03d}.png".format(100))), img)
-    # raise
-
-    for i, img in enumerate(background_generator(img_size, **bg_config)):
-        print(i, img.shape)
-        if i > 100:
-            break
-        cv.imwrite(str(Path(im_dir, "{:03d}.png".format(i))), img)
-    
-    raise
-
     num_lines = random_state.randint(1, nb_lines)
     segments = np.empty((0, 4), dtype=np.int)
-    points = np.empty((0, 2), dtype=np.int)
-    background_color = int(np.mean(img))
+    pts = np.empty((0, 2), dtype=np.int)
     min_dim = min(img.shape)
+
+
+    # Generate lines position avoid overlapping lines
+    # TODO: remove the hard code num_lines
+    num_lines = 10
     for i in range(num_lines):
+
         x1 = random_state.randint(img.shape[1])
         y1 = random_state.randint(img.shape[0])
-        p1 = np.array([[x1, y1]])
         x2 = random_state.randint(img.shape[1])
         y2 = random_state.randint(img.shape[0])
-        p2 = np.array([[x2, y2]])
+
+        p1 = np.array([[x1, y1]])
+        p2 = np.array([[x2, y2]]) 
+
         # Check that there is no overlap
         if intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
             continue
         segments = np.concatenate([segments, np.array([[x1, y1, x2, y2]])], axis=0)
-        col = get_random_color(background_color)
-        thickness = random_state.randint(min_dim * 0.01, min_dim * 0.02)
-        cv.line(img, (x1, y1), (x2, y2), col, thickness)
-        points = np.concatenate([points, np.array([[x1, y1], [x2, y2]])], axis=0)
-    return points
+        pts = np.concatenate([pts, np.array([[x1, y1], [x2, y2]])], axis=0)
+
+    thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
+    rotation = [get_random_rotation() for _ in range(len(segments))]
+    speed = np.concatenate([random_state.randint(0, 8, size=(len(segments), 1))-4,
+                            random_state.randint(0, 8, size=(len(segments), 1))-4],
+                            axis=1)
+
+
+    # TODO: Remove this later
+    frames = 10
+    # Generate frames
+    for i, img in enumerate(background_generator(img_size, **bg_config)):
+        # new_seg = np.empty((0, 4), dtype=np.int)
+        
+        if i > frames:
+            break
+
+        if i == 0:
+           background_color = int(np.mean(img))
+           colors = [get_random_color(background_color) for _ in range(len(segments))]
+
+        for j, line in enumerate(segments):
+
+            center = np.average(line.reshape(2, 2), axis=0)
+            line =  np.matmul(line.reshape(2, 2) - center, rotation[j]) + center + i*speed[j]
+            line = line.astype(int)
+            segments[j] = line.reshape(-1)
+
+            cv.line(img, 
+                    (line[0, 0], line[0, 1]), 
+                    (line[1, 0], line[1, 1]),
+                    colors[j], 
+                    thickness[j])
+
+        cv.imwrite(str(Path(im_dir, "{:03d}.png".format(i))), img)
+        
+    raise
+    return pts
 
 
 def draw_polygon(img, max_sides=8):
