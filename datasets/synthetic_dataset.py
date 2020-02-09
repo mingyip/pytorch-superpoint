@@ -202,9 +202,6 @@ def draw_lines(img_size, bg_config, nb_lines=10):
     segments = np.empty((0, 4), dtype=np.int)
     min_dim = min(img_size)
 
-    #TODO: remove this jam
-    # for i in range(212):
-    #     random_state.randint(100)
 
     # Generate lines position avoid overlapping lines
     for i in range(num_lines):
@@ -221,7 +218,6 @@ def draw_lines(img_size, bg_config, nb_lines=10):
         if intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
             continue
         segments = np.concatenate([segments, np.array([[x1, y1, x2, y2]])], axis=0)
-
 
     thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
     rotation = [get_random_rotation() for _ in range(len(segments))]
@@ -275,17 +271,18 @@ def draw_lines(img_size, bg_config, nb_lines=10):
 
 
 
-def draw_polygon(img, max_sides=8):
+def draw_polygon(img_size, bg_config, max_sides=8):
     """ Draw a polygon with a random number of corners
     and return the corner points
     Parameters:
       max_sides: maximal number of sides + 1
     """
+
     num_corners = random_state.randint(3, max_sides)
-    min_dim = min(img.shape[0], img.shape[1])
+    min_dim = min(img_size[0], img_size[1])
     rad = max(random_state.rand() * min_dim / 2, min_dim / 10)
-    x = random_state.randint(rad, img.shape[1] - rad)  # Center of a circle
-    y = random_state.randint(rad, img.shape[0] - rad)
+    x = random_state.randint(rad, img_size[1] - rad)  # Center of a circle
+    y = random_state.randint(rad, img_size[0] - rad)
 
     # Sample num_corners points inside the circle
     slices = np.linspace(0, 2 * math.pi, num_corners + 1)
@@ -306,16 +303,39 @@ def draw_polygon(img, max_sides=8):
                                            points[(i+1) % num_corners, :] -
                                            points[i, :])
                      for i in range(num_corners)]
+
     mask = np.array(corner_angles) < (2 * math.pi / 3)
     points = points[mask, :]
     num_corners = points.shape[0]
     if num_corners < 3:  # not enough corners
-        return draw_polygon(img, max_sides)
+        return draw_polygon(img_size, bg_config, max_sides)
 
-    corners = points.reshape((-1, 1, 2))
-    col = get_random_color(int(np.mean(img)))
-    cv.fillPoly(img, [corners], col)
-    return points
+    rotation = get_random_rotation()
+    speed_x = random_state.randint(0, 40)-20
+    speed_y = random_state.randint(0, 40)-20
+    speed = np.array([speed_x, speed_y])                  
+
+
+    # Generate frames
+    for i, img in enumerate(background_generator(img_size, **bg_config)):
+        pts = np.empty((0, 2), dtype=np.int)
+
+        if i == 0:
+           color = get_random_color(int(np.mean(img))) 
+        
+        # Rotation
+        center = np.average(points, axis=0)
+        points = (np.matmul(points - center, rotation) + center + speed).astype(int)
+
+        corners = points.reshape((-1, 1, 2))
+        cv.fillPoly(img, [corners], color)
+
+        # Add points in the point list if it is within the boundary
+        for pt in points:
+            if pt[0] > 0 and pt[0] < img_size[1] and pt[1] > 0 and pt[1] < img_size[0]:
+                pts = np.concatenate([pts, np.array([[pt[0], pt[1]]])], axis=0)
+
+        yield pts, img
 
 
 def overlap(center, rad, centers, rads):
