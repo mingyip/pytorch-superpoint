@@ -198,12 +198,14 @@ def draw_lines(img_size, bg_config, nb_lines=10):
       nb_lines: maximal number of lines
     """
 
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
     num_lines = random_state.randint(1, nb_lines)
     segments = np.empty((0, 4), dtype=np.int)
     min_dim = min(img_size)
+    
 
-
-    # Generate lines position avoid overlapping lines
+    # Generate lines position and avoid overlapping lines
     for i in range(num_lines):
 
         x1 = random_state.randint(img_size[1])
@@ -224,17 +226,14 @@ def draw_lines(img_size, bg_config, nb_lines=10):
     speed = np.concatenate([random_state.randint(0, 8, size=(len(segments), 1))-4,
                             random_state.randint(0, 8, size=(len(segments), 1))-4],
                             axis=1)
-
+    colors = [get_random_color(background_color) for _ in range(len(segments))]
 
 
     # Generate frames
-    for i, img in enumerate(background_generator(img_size, **bg_config)):
+    for i, img in enumerate(bg):
+
+
         pts = np.empty((0, 2), dtype=np.int)
-
-        if i == 0:
-           background_color = int(np.mean(img))
-           colors = [get_random_color(background_color) for _ in range(len(segments))]
-
         for j, line in enumerate(segments):
 
             center = np.average(line.reshape(2, 2), axis=0)
@@ -278,6 +277,8 @@ def draw_polygon(img_size, bg_config, max_sides=8):
       max_sides: maximal number of sides + 1
     """
 
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
     num_corners = random_state.randint(3, max_sides)
     min_dim = min(img_size[0], img_size[1])
     rad = max(random_state.rand() * min_dim / 2, min_dim / 10)
@@ -310,6 +311,7 @@ def draw_polygon(img_size, bg_config, max_sides=8):
     if num_corners < 3:  # not enough corners
         return draw_polygon(img_size, bg_config, max_sides)
 
+    color = get_random_color(int(np.mean(background_color)))
     rotation = get_random_rotation()
     speed_x = random_state.randint(0, 40)-20
     speed_y = random_state.randint(0, 40)-20
@@ -317,12 +319,9 @@ def draw_polygon(img_size, bg_config, max_sides=8):
 
 
     # Generate frames
-    for i, img in enumerate(background_generator(img_size, **bg_config)):
-        pts = np.empty((0, 2), dtype=np.int)
+    for i, img in enumerate(bg):
+        pts = np.empty((0, 2), dtype=np.int)           
 
-        if i == 0:
-           color = get_random_color(int(np.mean(img))) 
-        
         # Rotation
         center = np.average(points, axis=0)
         points = (np.matmul(points - center, rotation) + center + speed).astype(int)
@@ -368,6 +367,7 @@ def draw_multiple_polygons(img, max_sides=8, nb_polygons=30, **extra):
     rads = []
     points = np.empty((0, 2), dtype=np.int)
     background_color = int(np.mean(img))
+    
     for i in range(nb_polygons):
         num_corners = random_state.randint(3, max_sides)
         min_dim = min(img.shape[0], img.shape[1])
@@ -430,6 +430,8 @@ def draw_multiple_polygons(img, max_sides=8, nb_polygons=30, **extra):
         locs = np.where(mask != 0)
         img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
         points = np.concatenate([points, new_points], axis=0)
+
+    
     return points
 
 
