@@ -122,6 +122,7 @@ class SyntheticDataset_gaussian(data.Dataset):
         image_size = config["generation"]["image_size"]
         bg_config = config["generation"]["params"]["generate_background"]
         frames = config["generation"]["num_frames"]
+        primitive_config = config["generation"]["params"].get(primitive, {})
 
 
         for split, size in self.config["generation"]["split_sizes"].items():
@@ -130,39 +131,49 @@ class SyntheticDataset_gaussian(data.Dataset):
             pts_dir.mkdir(parents=True, exist_ok=True)
 
             for i in tqdm(range(size), desc=split, leave=False):
-                image = synthetic_dataset.generate_background(
-                    config["generation"]["image_size"],
-                    **config["generation"]["params"]["generate_background"],
-                )
 
-                points = np.array(
-                    getattr(synthetic_dataset, primitive)(
-                        image,
-                        image_size,
-                        bg_config,
-                        **config["generation"]["params"].get(primitive, {})
+                generator = getattr(synthetic_dataset, primitive)(image_size,
+                                                                bg_config,
+                                                                **primitive_config
+                                                            )
+
+
+                for j, (pts, img) in enumerate(generator):
+                    if j > frames:
+                        break
+
+
+                    # for pt in pts:
+                    #     cv2.circle(img, (pt[0], pt[1]), 20, (0, 255, 0), -1)
+
+                    pts = np.flip(pts, 1)  # reverse convention with opencv
+
+                    
+                    b = config["preprocessing"]["blur_size"]
+                    img = cv2.GaussianBlur(img, (b, b), 0)
+                    
+                    pts = (
+                        pts
+                        * np.array(config["preprocessing"]["resize"], np.float)
+                        / np.array(config["generation"]["image_size"], np.float)
                     )
-                )
+                    img = cv2.resize(
+                        img,
+                        tuple(config["preprocessing"]["resize"][::-1]),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
 
-                raise
+                    im_folder = Path(im_dir, "{:04d}".format(i))
+                    pts_folder = Path(pts_dir, "{:04d}".format(i))
+                    im_folder.mkdir(parents=True, exist_ok=True)
+                    pts_folder.mkdir(parents=True, exist_ok=True)
 
-                points = np.flip(points, 1)  # reverse convention with opencv
+                    # img = cv2.putText(img, str(len(pts)), (5, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA) 
 
-                b = config["preprocessing"]["blur_size"]
-                image = cv2.GaussianBlur(image, (b, b), 0)
-                points = (
-                    points
-                    * np.array(config["preprocessing"]["resize"], np.float)
-                    / np.array(config["generation"]["image_size"], np.float)
-                )
-                image = cv2.resize(
-                    image,
-                    tuple(config["preprocessing"]["resize"][::-1]),
-                    interpolation=cv2.INTER_LINEAR,
-                )
+                    cv2.imwrite(str(Path(im_folder, "{}.png".format(j))), img)
+                    np.save(Path(pts_folder, "{}.npy".format(j)), pts)
 
-                cv2.imwrite(str(Path(im_dir, "{}.png".format(i))), image)
-                np.save(Path(pts_dir, "{}.npy".format(i)), points)
+        raise
 
         # Pack into a tar file
         tar = tarfile.open(tar_path, mode="w:gz")
@@ -170,6 +181,9 @@ class SyntheticDataset_gaussian(data.Dataset):
         tar.close()
         shutil.rmtree(temp_dir)
         tf.logging.info("Tarfile dumped to {}.".format(tar_path))
+
+        print("Draw Lines Done!")
+        raise
 
     def parse_primitives(self, names, all_primitives):
         p = (

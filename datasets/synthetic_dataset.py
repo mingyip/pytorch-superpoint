@@ -192,30 +192,27 @@ def keep_points_inside(points, size):
     return points[mask, :]
 
 
-def draw_lines(img, img_size, bg_config, nb_lines=10):
+def draw_lines(img_size, bg_config, nb_lines=10):
     """ Draw random lines and output the positions of the endpoints
     Parameters:
       nb_lines: maximal number of lines
     """
 
-    im_dir = 'temp'
     num_lines = random_state.randint(1, nb_lines)
     segments = np.empty((0, 4), dtype=np.int)
-    pts = np.empty((0, 2), dtype=np.int)
-    min_dim = min(img.shape)
+    min_dim = min(img_size)
 
-    for i in range(200):
-        random_state.randint(img.shape[1])
+    #TODO: remove this jam
+    # for i in range(212):
+    #     random_state.randint(100)
 
     # Generate lines position avoid overlapping lines
-    # TODO: remove the hard code num_lines
-    num_lines = 10
     for i in range(num_lines):
 
-        x1 = random_state.randint(img.shape[1])
-        y1 = random_state.randint(img.shape[0])
-        x2 = random_state.randint(img.shape[1])
-        y2 = random_state.randint(img.shape[0])
+        x1 = random_state.randint(img_size[1])
+        y1 = random_state.randint(img_size[0])
+        x2 = random_state.randint(img_size[1])
+        y2 = random_state.randint(img_size[0])
 
         p1 = np.array([[x1, y1]])
         p2 = np.array([[x2, y2]]) 
@@ -224,7 +221,7 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
         if intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
             continue
         segments = np.concatenate([segments, np.array([[x1, y1, x2, y2]])], axis=0)
-        pts = np.concatenate([pts, np.array([[x1, y1], [x2, y2]])], axis=0)
+
 
     thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
     rotation = [get_random_rotation() for _ in range(len(segments))]
@@ -233,13 +230,10 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
                             axis=1)
 
 
-    # TODO: Remove this later
-    frames = 30
+
     # Generate frames
     for i, img in enumerate(background_generator(img_size, **bg_config)):
-        
-        if i > frames:
-            break
+        pts = np.empty((0, 2), dtype=np.int)
 
         if i == 0:
            background_color = int(np.mean(img))
@@ -262,17 +256,23 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
                 segments[j] = new_line.reshape(-1)
 
 
-            x1_pad = (x1 + 2 / thickness[j] * (x2-x1)).astype(int)
-            x2_pad = (x2 + 2 / thickness[j] * (x1-x2)).astype(int)
-            y1_pad = (y1 + 2 / thickness[j] * (y2-y1)).astype(int)
-            y2_pad = (y2 + 2 / thickness[j] * (y1-y2)).astype(int)
+            # Make the lines shorter to prevent overlapping due to the thickness of the lines
+            x1_pad = (x1 + 3 / thickness[j] * (x2-x1)).astype(int)
+            x2_pad = (x2 + 3 / thickness[j] * (x1-x2)).astype(int)
+            y1_pad = (y1 + 3 / thickness[j] * (y2-y1)).astype(int)
+            y2_pad = (y2 + 3 / thickness[j] * (y1-y2)).astype(int)
             cv.line(img, (x1_pad, y1_pad), (x2_pad, y2_pad), colors[j], thickness[j])
 
+            # Add points in the point list if it is within the boundary
+            if x1_pad > 0 and x1_pad < img_size[1] and y1_pad > 0 and y1_pad < img_size[0]:
+                pts = np.concatenate([pts, np.array([[x1_pad, y1_pad]])], axis=0)
 
-        cv.imwrite(str(Path(im_dir, "{:03d}.png".format(i))), img)
-        
-    raise
-    return pts
+            if x2_pad > 0 and x2_pad < img_size[1] and y2_pad > 0 and y2_pad < img_size[0]:
+                pts = np.concatenate([pts, np.array([[x2_pad, y2_pad]])], axis=0)
+
+        yield pts, img
+
+
 
 
 def draw_polygon(img, max_sides=8):
