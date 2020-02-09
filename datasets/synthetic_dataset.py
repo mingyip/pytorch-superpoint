@@ -204,6 +204,8 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
     pts = np.empty((0, 2), dtype=np.int)
     min_dim = min(img.shape)
 
+    for i in range(200):
+        random_state.randint(img.shape[1])
 
     # Generate lines position avoid overlapping lines
     # TODO: remove the hard code num_lines
@@ -232,10 +234,9 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
 
 
     # TODO: Remove this later
-    frames = 10
+    frames = 30
     # Generate frames
     for i, img in enumerate(background_generator(img_size, **bg_config)):
-        # new_seg = np.empty((0, 4), dtype=np.int)
         
         if i > frames:
             break
@@ -247,15 +248,26 @@ def draw_lines(img, img_size, bg_config, nb_lines=10):
         for j, line in enumerate(segments):
 
             center = np.average(line.reshape(2, 2), axis=0)
-            line =  np.matmul(line.reshape(2, 2) - center, rotation[j]) + center + i*speed[j]
-            line = line.astype(int)
-            segments[j] = line.reshape(-1)
+            new_line = (np.matmul(line.reshape(2, 2) - center, rotation[j]) + center + i*speed[j]).astype(int)
+            x1, y1 = new_line[0, 0], new_line[0, 1]
+            x2, y2 = new_line[1, 0], new_line[1, 1]
 
-            cv.line(img, 
-                    (line[0, 0], line[0, 1]), 
-                    (line[1, 0], line[1, 1]),
-                    colors[j], 
-                    thickness[j])
+
+            # Check that there is no overlap
+            new_seg = segments[np.arange(len(segments))!=j]
+            if intersect(new_seg[:, 0:2], new_seg[:, 2:4], np.array([[x1, y1]]), np.array([[x2, y2]]), 2):
+                x1, y1 = line[0], line[1]
+                x2, y2 = line[2], line[3]
+            else:
+                segments[j] = new_line.reshape(-1)
+
+
+            x1_pad = (x1 + 2 / thickness[j] * (x2-x1)).astype(int)
+            x2_pad = (x2 + 2 / thickness[j] * (x1-x2)).astype(int)
+            y1_pad = (y1 + 2 / thickness[j] * (y2-y1)).astype(int)
+            y2_pad = (y2 + 2 / thickness[j] * (y1-y2)).astype(int)
+            cv.line(img, (x1_pad, y1_pad), (x2_pad, y2_pad), colors[j], thickness[j])
+
 
         cv.imwrite(str(Path(im_dir, "{:03d}.png".format(i))), img)
         
