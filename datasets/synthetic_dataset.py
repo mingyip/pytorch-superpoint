@@ -370,10 +370,7 @@ def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **e
     centers = []
     rads = []
     points = np.empty((0, 2), dtype=np.int)
-    
 
-    for i in range(203):
-        random_state.rand()
 
 
     # generate points
@@ -463,34 +460,65 @@ def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **e
         yield pts, img
 
 
-def draw_ellipses(img, nb_ellipses=20):
+def draw_ellipses(img_size, bg_config, nb_ellipses=20):
     """ Draw several ellipses
     Parameters:
       nb_ellipses: maximal number of ellipses
     """
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
+
     centers = np.empty((0, 2), dtype=np.int)
-    rads = np.empty((0, 1), dtype=np.int)
-    min_dim = min(img.shape[0], img.shape[1]) / 4
-    background_color = int(np.mean(img))
+    max_rads = np.empty((0, 1), dtype=np.int)
+    rads = np.empty((0, 2), dtype=np.int)
+    min_dim = min(img_size[0], img_size[1]) / 4
+    
     for i in range(nb_ellipses):
         ax = int(max(random_state.rand() * min_dim, min_dim / 5))
         ay = int(max(random_state.rand() * min_dim, min_dim / 5))
         max_rad = max(ax, ay)
-        x = random_state.randint(max_rad, img.shape[1] - max_rad)  # center
-        y = random_state.randint(max_rad, img.shape[0] - max_rad)
+        x = random_state.randint(max_rad, img_size[1] - max_rad)  # center
+        y = random_state.randint(max_rad, img_size[0] - max_rad)
         new_center = np.array([[x, y]])
 
         # Check that the ellipsis will not overlap with pre-existing shapes
         diff = centers - new_center
-        if np.any(max_rad > (np.sqrt(np.sum(diff * diff, axis=1)) - rads)):
+        if np.any(max_rad > (np.sqrt(np.sum(diff * diff, axis=1)) - max_rads)):
             continue
         centers = np.concatenate([centers, new_center], axis=0)
-        rads = np.concatenate([rads, np.array([[max_rad]])], axis=0)
+        max_rads = np.concatenate([max_rads, np.array([[max_rad]])], axis=0)
+        rads = np.concatenate([rads, np.array([[ax, ay]])], axis=0)
 
-        col = get_random_color(background_color)
-        angle = random_state.rand() * 90
-        cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, col, -1)
-    return np.empty((0, 2), dtype=np.int)
+    
+    for i in range(23):
+        random_state.rand()
+
+    colors = [get_random_color(background_color) for _ in range(len(centers))]
+    angles = [random_state.rand()*90 for _ in range(len(centers))]
+    rotation = [random_state.rand()*10-5 for _ in range(len(centers))]
+    speed_x = [[random_state.randint(0, 40)-20] for _ in range(len(centers))]
+    speed_y = [[random_state.randint(0, 40)-20] for _ in range(len(centers))]
+    speed = np.hstack((speed_x, speed_y))
+
+    for i, img in enumerate(bg):
+        
+        for j, (center, rad, angle, R, S, color) in enumerate(zip(centers, rads, angles, rotation, speed, colors)):
+
+            new_center = center + S
+            angles[j] = angle + R
+
+            # Check that the ellipsis will not overlap with pre-existing 
+            temp_max_rads = max_rads[np.arange(len(max_rads))!=j]
+            temp_centers = centers[np.arange(len(centers))!=j]
+
+            diff = temp_centers - new_center
+            if not np.any(max(rad) > (np.sqrt(np.sum(diff * diff, axis=1)) - temp_max_rads)):
+                centers[j] = new_center
+
+            cv.ellipse(img, (center[0], center[1]), (rad[0], rad[1]), angle + R, 0, 360, color, -1)
+
+        # cv.imwrite(str(Path('temp', "{}.png".format(i))), img)
+        yield np.empty((0, 2), dtype=np.int), img
 
 
 def draw_star(img, nb_branches=6):
