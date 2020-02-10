@@ -489,9 +489,6 @@ def draw_ellipses(img_size, bg_config, nb_ellipses=20):
         max_rads = np.concatenate([max_rads, np.array([[max_rad]])], axis=0)
         rads = np.concatenate([rads, np.array([[ax, ay]])], axis=0)
 
-    
-    for i in range(23):
-        random_state.rand()
 
     colors = [get_random_color(background_color) for _ in range(len(centers))]
     angles = [random_state.rand()*90 for _ in range(len(centers))]
@@ -521,32 +518,55 @@ def draw_ellipses(img_size, bg_config, nb_ellipses=20):
         yield np.empty((0, 2), dtype=np.int), img
 
 
-def draw_star(img, nb_branches=6):
+def draw_star(img_size, bg_config, nb_branches=6):
     """ Draw a star and output the interest points
     Parameters:
       nb_branches: number of branches of the star
     """
+
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
+
     num_branches = random_state.randint(3, nb_branches)
-    min_dim = min(img.shape[0], img.shape[1])
+    min_dim = min(img_size[0], img_size[1])
     thickness = random_state.randint(min_dim * 0.01, min_dim * 0.02)
     rad = max(random_state.rand() * min_dim / 2, min_dim / 5)
-    x = random_state.randint(rad, img.shape[1] - rad)  # select the center of a circle
-    y = random_state.randint(rad, img.shape[0] - rad)
+    x = random_state.randint(rad, img_size[1] - rad)  # select the center of a circle
+    y = random_state.randint(rad, img_size[0] - rad)
     # Sample num_branches points inside the circle
     slices = np.linspace(0, 2 * math.pi, num_branches + 1)
-    angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
-              for i in range(num_branches)]
+    angles = [slices[j] + random_state.rand() * (slices[j+1] - slices[j])
+              for j in range(num_branches)]
     points = np.array([[int(x + max(random_state.rand(), 0.3) * rad * math.cos(a)),
                         int(y + max(random_state.rand(), 0.3) * rad * math.sin(a))]
                        for a in angles])
     points = np.concatenate(([[x, y]], points), axis=0)
-    background_color = int(np.mean(img))
-    for i in range(1, num_branches + 1):
-        col = get_random_color(background_color)
-        cv.line(img, (points[0][0], points[0][1]),
-                (points[i][0], points[i][1]),
-                col, thickness)
-    return points
+    color = get_random_color(background_color)
+    rotation = get_random_rotation()
+    speed_x = random_state.randint(0, 40)-20
+    speed_y = random_state.randint(0, 40)-20
+    speed = np.array([speed_x, speed_y])
+
+    for i, img in enumerate(bg):
+        pts = np.empty((0, 2), dtype=np.int)
+        if i > 30:
+            break
+
+        center = (points[0][0], points[0][1])
+        points = (np.matmul(points - center, rotation) + center + speed).astype(int)
+        for j in range(1, num_branches + 1):
+            cv.line(img, (points[0][0], points[0][1]),
+                    (points[j][0], points[j][1]),
+                    color, thickness)
+
+        # cv.imwrite(str(Path("temp", "{}.png".format(i))), img)
+
+        for pt in points:
+            if pt[0] > 0 and pt[0] < img_size[1] and pt[1] > 0 and pt[1] < img_size[0]:
+                pts = np.concatenate([pts, [pt]], axis=0)
+
+        yield pts, img
+
 
 
 def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)):
