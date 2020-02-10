@@ -342,7 +342,7 @@ def overlap(center, rad, centers, rads):
     doesn't overlap with the other circles """
     flag = False
     for i in range(len(rads)):
-        if np.linalg.norm(center - centers[i]) + min(rad, rads[i]) < max(rad, rads[i]):
+        if np.linalg.norm(center - centers[i]) < rad + rads[i]:
             flag = True
             break
     return flag
@@ -355,34 +355,43 @@ def angle_between_vectors(v1, v2):
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
-def draw_multiple_polygons(img, max_sides=8, nb_polygons=30, **extra):
+def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **extra):
     """ Draw multiple polygons with a random number of corners
     and return the corner points
     Parameters:
       max_sides: maximal number of sides + 1
       nb_polygons: maximal number of polygons
     """
+
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
     segments = np.empty((0, 4), dtype=np.int)
+    shapes = []
     centers = []
     rads = []
     points = np.empty((0, 2), dtype=np.int)
-    background_color = int(np.mean(img))
     
+
+    for i in range(203):
+        random_state.rand()
+
+
+    # generate points
     for i in range(nb_polygons):
         num_corners = random_state.randint(3, max_sides)
-        min_dim = min(img.shape[0], img.shape[1])
+        min_dim = min(img_size[0], img_size[1])
         rad = max(random_state.rand() * min_dim / 2, min_dim / 10)
-        x = random_state.randint(rad, img.shape[1] - rad)  # Center of a circle
-        y = random_state.randint(rad, img.shape[0] - rad)
+        x = random_state.randint(rad, img_size[1] - rad)  # Center of a circle
+        y = random_state.randint(rad, img_size[0] - rad)
 
         # Sample num_corners points inside the circle
         slices = np.linspace(0, 2 * math.pi, num_corners + 1)
         angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
                   for i in range(num_corners)]
-        new_points = [[int(x + max(random_state.rand(), 0.4) * rad * math.cos(a)),
-                       int(y + max(random_state.rand(), 0.4) * rad * math.sin(a))]
-                      for a in angles]
-        new_points = np.array(new_points)
+        new_points = np.array([[int(x + max(random_state.rand(), 0.4) * rad * math.cos(a)),
+                                int(y + max(random_state.rand(), 0.4) * rad * math.sin(a))]
+                                for a in angles])
+
 
         # Filter the points that are too close or that have an angle too flat
         norms = [np.linalg.norm(new_points[(i-1) % num_corners, :]
@@ -401,38 +410,57 @@ def draw_multiple_polygons(img, max_sides=8, nb_polygons=30, **extra):
         if num_corners < 3:  # not enough corners
             continue
 
-        new_segments = np.zeros((1, 4, num_corners))
-        new_segments[:, 0, :] = [new_points[i][0] for i in range(num_corners)]
-        new_segments[:, 1, :] = [new_points[i][1] for i in range(num_corners)]
-        new_segments[:, 2, :] = [new_points[(i+1) % num_corners][0]
-                                 for i in range(num_corners)]
-        new_segments[:, 3, :] = [new_points[(i+1) % num_corners][1]
-                                 for i in range(num_corners)]
-
         # Check that the polygon will not overlap with pre-existing shapes
-        if intersect(segments[:, 0:2, None],
-                     segments[:, 2:4, None],
-                     new_segments[:, 0:2, :],
-                     new_segments[:, 2:4, :],
-                     3) or overlap(np.array([x, y]), rad, centers, rads):
+        if overlap(np.array([x, y]), rad, centers, rads):
             continue
+
+
+        shapes.append(new_points)
         centers.append(np.array([x, y]))
         rads.append(rad)
-        new_segments = np.reshape(np.swapaxes(new_segments, 0, 2), (-1, 4))
-        segments = np.concatenate([segments, new_segments], axis=0)
 
-        # Color the polygon with a custom background
-        corners = new_points.reshape((-1, 1, 2))
-        mask = np.zeros(img.shape, np.uint8)
-        custom_background = generate_custom_background(img.shape, background_color,
-                                                       **extra)
-        cv.fillPoly(mask, [corners], 255)
-        locs = np.where(mask != 0)
-        img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
-        points = np.concatenate([points, new_points], axis=0)
+
+    # Rotation and Speed
+    centers = np.array(centers)
+    rads = np.array(rads)
+    rotation = [get_random_rotation() for _ in range(len(shapes))]
+    speed_x = [[random_state.randint(0, 40)-20] for _ in range(len(shapes))]
+    speed_y = [[random_state.randint(0, 40)-20] for _ in range(len(shapes))]
+    speed = np.hstack((speed_x, speed_y))
+
+    # Color the polygon with a custom background
+    for i, img in enumerate(bg):
+
+        pts = np.empty((0, 2), dtype=np.int)
+        for j, shp in enumerate(shapes):
+
+            
+            temp_shp = (np.matmul(shp - centers[j], rotation[j]) + centers[j] + speed[j]).astype(int)
+            new_center = centers[j] + speed[j]
+
+
+            # Check that the polygon will not overlap with pre-existing shapes
+            temp_centers = centers[np.arange(len(centers))!=j]
+            temp_rads = rads[np.arange(len(rads))!=j]
+            if not overlap(new_center, rad, temp_centers, temp_rads):
+                shapes[j] = temp_shp
+                centers[j] = new_center
+
+
+            corners = shp.reshape((-1, 1, 2))
+            mask = np.zeros(img.shape, np.uint8)
+            custom_bg = generate_custom_background(img.shape, background_color, **extra)
+            cv.fillPoly(mask, [corners], 255)
+            locs = np.where(mask != 0)
+            img[locs[0], locs[1]] = custom_bg[locs[0], locs[1]]
 
     
-    return points
+            # check if outside the boundary
+            for pt in shp:
+                if pt[0] > 0 and pt[0] < img_size[1] and pt[1] > 0 and pt[1] < img_size[0]:
+                    pts = np.concatenate([pts, [pt]], axis=0)
+
+        yield pts, img
 
 
 def draw_ellipses(img, nb_ellipses=20):
