@@ -330,9 +330,7 @@ def draw_polygon(img_size, bg_config, max_sides=8):
         cv.fillPoly(img, [corners], color)
 
         # Add points in the point list if it is within the boundary
-        for pt in points:
-            if pt[0] > 0 and pt[0] < img_size[1] and pt[1] > 0 and pt[1] < img_size[0]:
-                pts = np.concatenate([pts, np.array([[pt[0], pt[1]]])], axis=0)
+        pts = keep_points_inside(points, img_size)
 
         yield pts, img
 
@@ -453,9 +451,7 @@ def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **e
 
     
             # check if outside the boundary
-            for pt in shp:
-                if pt[0] > 0 and pt[0] < img_size[1] and pt[1] > 0 and pt[1] < img_size[0]:
-                    pts = np.concatenate([pts, [pt]], axis=0)
+            pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
 
         yield pts, img
 
@@ -561,9 +557,8 @@ def draw_star(img_size, bg_config, nb_branches=6):
 
         # cv.imwrite(str(Path("temp", "{}.png".format(i))), img)
 
-        for pt in points:
-            if pt[0] > 0 and pt[0] < img_size[1] and pt[1] > 0 and pt[1] < img_size[0]:
-                pts = np.concatenate([pts, [pt]], axis=0)
+        # Keep only the points inside the image
+        pts = keep_points_inside(points, img_size)
 
         yield pts, img
 
