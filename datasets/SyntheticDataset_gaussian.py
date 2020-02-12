@@ -170,8 +170,8 @@ class SyntheticDataset_gaussian(data.Dataset):
 
                     # img = cv2.putText(img, str(len(pts)), (5, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA) 
 
-                    cv2.imwrite(str(Path(im_folder, "{}.png".format(j))), img)
-                    np.save(Path(pts_folder, "{}.npy".format(j)), pts)
+                    cv2.imwrite(str(Path(im_folder, "{:02d}.png".format(j))), img)
+                    np.save(Path(pts_folder, "{:02d}.npy".format(j)), pts)
 
         raise
 
@@ -179,10 +179,11 @@ class SyntheticDataset_gaussian(data.Dataset):
         tar = tarfile.open(tar_path, mode="w:gz")
         tar.add(temp_dir, arcname=primitive)
         tar.close()
-        shutil.rmtree(temp_dir)
+        # shutil.rmtree(temp_dir)
         tf.logging.info("Tarfile dumped to {}.".format(tar_path))
 
-        print("Draw Lines Done!")
+
+        print("DONE")
         raise
 
     def parse_primitives(self, names, all_primitives):
