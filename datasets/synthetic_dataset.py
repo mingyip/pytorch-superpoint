@@ -865,7 +865,7 @@ def draw_stripes(img_size, bg_config, max_nb_cols=13, min_width_ratio=0.04,
         yield points, img
 
 
-def draw_cube(img, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
+def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
               scale_interval=(0.4, 0.6), trans_interval=(0.5, 0.2)):
     """ Draw a 2D projection of a cube and output the corners that are visible
     Parameters:
@@ -880,8 +880,10 @@ def draw_cube(img, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
     # Generate a cube and apply to it an affine transformation
     # The order matters!
     # The indices of two adjacent vertices differ only of one bit (as in Gray codes)
-    background_color = int(np.mean(img))
-    min_dim = min(img.shape[:2])
+
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
+    min_dim = min(img_size[:2])
     min_side = min_dim * min_size_ratio
     lx = min_side + random_state.rand() * 2 * min_dim / 3  # dimensions of the cube
     ly = min_side + random_state.rand() * 2 * min_dim / 3
@@ -895,61 +897,85 @@ def draw_cube(img, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
                      [0, ly, lz],
                      [lx, ly, lz]])
     rot_angles = random_state.rand(3) * 3 * math.pi / 10. + math.pi / 10.
-    rotation_1 = np.array([[math.cos(rot_angles[0]), -math.sin(rot_angles[0]), 0],
-                           [math.sin(rot_angles[0]), math.cos(rot_angles[0]), 0],
-                           [0, 0, 1]])
-    rotation_2 = np.array([[1, 0, 0],
-                           [0, math.cos(rot_angles[1]), -math.sin(rot_angles[1])],
-                           [0, math.sin(rot_angles[1]), math.cos(rot_angles[1])]])
-    rotation_3 = np.array([[math.cos(rot_angles[2]), 0, -math.sin(rot_angles[2])],
-                           [0, 1, 0],
-                           [math.sin(rot_angles[2]), 0, math.cos(rot_angles[2])]])
+    rotation = [random_state.uniform(-0.01, 0.01) for _ in range(3)]
+
+
     scaling = np.array([[scale_interval[0] +
-                         random_state.rand() * scale_interval[1], 0, 0],
-                        [0, scale_interval[0] +
-                         random_state.rand() * scale_interval[1], 0],
-                        [0, 0, scale_interval[0] +
-                         random_state.rand() * scale_interval[1]]])
-    trans = np.array([img.shape[1] * trans_interval[0] +
-                      random_state.randint(-img.shape[1] * trans_interval[1],
-                                           img.shape[1] * trans_interval[1]),
-                      img.shape[0] * trans_interval[0] +
-                      random_state.randint(-img.shape[0] * trans_interval[1],
-                                           img.shape[0] * trans_interval[1]),
-                      0])
-    cube = trans + np.transpose(np.dot(scaling,
-                                       np.dot(rotation_1,
-                                              np.dot(rotation_2,
-                                                     np.dot(rotation_3,
-                                                            np.transpose(cube))))))
+                    random_state.rand() * scale_interval[1], 0, 0],
+                    [0, scale_interval[0] +
+                    random_state.rand() * scale_interval[1], 0],
+                    [0, 0, scale_interval[0] +
+                    random_state.rand() * scale_interval[1]]])
+    trans = np.array([img_size[1] * trans_interval[0] +
+                    random_state.randint(-img_size[1] * trans_interval[1],
+                                        img_size[1] * trans_interval[1]),
+                    img_size[0] * trans_interval[0] +
+                    random_state.randint(-img_size[0] * trans_interval[1],
+                                        img_size[0] * trans_interval[1]),
+                    0])
 
-    # The hidden corner is 0 by construction
-    # The front one is 7
-    cube = cube[:, :2]  # project on the plane z=0
-    cube = cube.astype(int)
-    points = cube[1:, :]  # get rid of the hidden corner
-
-    # Get the three visible faces
-    faces = np.array([[7, 3, 1, 5], [7, 5, 4, 6], [7, 6, 2, 3]])
-
-    # Fill the faces and draw the contours
     col_face = get_random_color(background_color)
-    for i in [0, 1, 2]:
-        cv.fillPoly(img, [cube[faces[i]].reshape((-1, 1, 2))],
-                    col_face)
     thickness = random_state.randint(min_dim * 0.003, min_dim * 0.015)
-    for i in [0, 1, 2]:
-        for j in [0, 1, 2, 3]:
-            col_edge = (col_face + 128
-                        + random_state.randint(-64, 64))\
-                        % 256  # color that constrats with the face color
-            cv.line(img, (cube[faces[i][j], 0], cube[faces[i][j], 1]),
-                    (cube[faces[i][(j + 1) % 4], 0], cube[faces[i][(j + 1) % 4], 1]),
-                    col_edge, thickness)
 
-    # Keep only the points inside the image
-    points = keep_points_inside(points, img.shape[:2])
-    return points
+    for i in [0, 1, 2]:
+            for j in [0, 1, 2, 3]:
+                col_edge = (col_face + 128
+                            + random_state.randint(-64, 64))\
+                            % 256
+
+
+    for t, img in enumerate(bg):
+
+        cube = np.array([[0, 0, 0],
+                     [lx, 0, 0],
+                     [0, ly, 0],
+                     [lx, ly, 0],
+                     [0, 0, lz],
+                     [lx, 0, lz],
+                     [0, ly, lz],
+                     [lx, ly, lz]])
+
+        rot_angles += rotation
+
+        rotation_1 = np.array([[math.cos(rot_angles[0]), -math.sin(rot_angles[0]), 0],
+                            [math.sin(rot_angles[0]), math.cos(rot_angles[0]), 0],
+                            [0, 0, 1]])
+        rotation_2 = np.array([[1, 0, 0],
+                            [0, math.cos(rot_angles[1]), -math.sin(rot_angles[1])],
+                            [0, math.sin(rot_angles[1]), math.cos(rot_angles[1])]])
+        rotation_3 = np.array([[math.cos(rot_angles[2]), 0, -math.sin(rot_angles[2])],
+                            [0, 1, 0],
+                            [math.sin(rot_angles[2]), 0, math.cos(rot_angles[2])]])
+
+                        
+        cube = trans + np.transpose(np.dot(scaling,
+                                        np.dot(rotation_1,
+                                                np.dot(rotation_2,
+                                                        np.dot(rotation_3,
+                                                                np.transpose(cube))))))
+
+        # The hidden corner is 0 by construction
+        # The front one is 7
+        cube = cube[:, :2]  # project on the plane z=0
+        cube = cube.astype(int)
+        points = cube[1:, :]  # get rid of the hidden corner
+
+        # Get the three visible faces
+        faces = np.array([[7, 3, 1, 5], [7, 5, 4, 6], [7, 6, 2, 3]])
+
+        # Fill the faces and draw the contours
+        for i in [0, 1, 2]:
+            cv.fillPoly(img, [cube[faces[i]].reshape((-1, 1, 2))], col_face)
+        
+        for i in [0, 1, 2]:
+            for j in [0, 1, 2, 3]:
+                cv.line(img, (cube[faces[i][j], 0], cube[faces[i][j], 1]),
+                        (cube[faces[i][(j + 1) % 4], 0], cube[faces[i][(j + 1) % 4], 1]),
+                        col_edge, thickness)
+
+        # Keep only the points inside the image
+        points = keep_points_inside(points, img_size[:2])
+        yield points, img
 
 
 def gaussian_noise(img):
