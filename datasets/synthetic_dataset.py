@@ -718,7 +718,7 @@ def draw_checkerboard(img_size, bg_config, max_rows=7, max_cols=7, transform_par
         yield points, img
 
 
-def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
+def draw_stripes(img_size, bg_config, max_nb_cols=13, min_width_ratio=0.04,
                  transform_params=(0.05, 0.15)):
     """ Draw stripes in a distorted rectangle and output the interest points
     Parameters:
@@ -727,16 +727,18 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
                        min_width_ratio * smallest dimension of the image
       transform_params: set the range of the parameters of the transformations
     """
-    background_color = int(np.mean(img))
+
+    bg = background_generator(img_size, **bg_config)
+    background_color = int(np.mean(next(bg)))
     # Create the grid
-    board_size = (int(img.shape[0] * (1 + random_state.rand())),
-                  int(img.shape[1] * (1 + random_state.rand())))
+    board_size = (int(img_size[0] * (1 + random_state.rand())),
+                  int(img_size[1] * (1 + random_state.rand())))
     col = random_state.randint(5, max_nb_cols)  # number of cols
     cols = np.concatenate([board_size[1] * random_state.rand(col - 1),
                            np.array([0, board_size[1] - 1])], axis=0)
     cols = np.unique(cols.astype(int))
     # Remove the indices that are too close
-    min_dim = min(img.shape)
+    min_dim = min(img_size)
     min_width = min_dim * min_width_ratio
     cols = cols[(np.concatenate([cols[1:],
                                  np.array([board_size[1] + min_width])],
@@ -753,10 +755,10 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
     # The parameters of the transformations are constrained
     # to get transformations not too far-fetched
     # Prepare the matrices
-    alpha_affine = np.max(img.shape) * (transform_params[0]
+    alpha_affine = np.max(img_size) * (transform_params[0]
                                         + random_state.rand() * transform_params[1])
-    center_square = np.float32(img.shape) // 2
-    square_size = min(img.shape) // 3
+    center_square = np.float32(img_size) // 2
+    square_size = min(img_size) // 3
     pts1 = np.float32([center_square + square_size,
                        [center_square[0]+square_size, center_square[1]-square_size],
                        center_square - square_size,
@@ -792,45 +794,75 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
     warped_points = warped_points.astype(int)
 
     # Fill the rectangles
-    color = get_random_color(background_color)
-    for i in range(col):
-        color = (color + 128 + random_state.randint(-30, 30)) % 256
-        cv.fillConvexPoly(img, np.array([(warped_points[i, 0],
-                                          warped_points[i, 1]),
-                                         (warped_points[i+1, 0],
-                                          warped_points[i+1, 1]),
-                                         (warped_points[i+col+2, 0],
-                                          warped_points[i+col+2, 1]),
-                                         (warped_points[i+col+1, 0],
-                                          warped_points[i+col+1, 1])]),
-                          color)
+    colors = np.zeros(col+1)
+    colors[-1] = get_random_color(background_color)
+
 
     # Draw lines on the boundaries of the stripes at random
     nb_rows = random_state.randint(2, 5)
     nb_cols = random_state.randint(2, col + 2)
     thickness = random_state.randint(min_dim * 0.01, min_dim * 0.015)
-    for _ in range(nb_rows):
-        row_idx = random_state.choice([0, col + 1])
-        col_idx1 = random_state.randint(col + 1)
-        col_idx2 = random_state.randint(col + 1)
-        color = get_random_color(background_color)
-        cv.line(img, (warped_points[row_idx + col_idx1, 0],
-                      warped_points[row_idx + col_idx1, 1]),
-                (warped_points[row_idx + col_idx2, 0],
-                 warped_points[row_idx + col_idx2, 1]),
-                color, thickness)
-    for _ in range(nb_cols):
-        col_idx = random_state.randint(col + 1)
-        color = get_random_color(background_color)
-        cv.line(img, (warped_points[col_idx, 0],
-                      warped_points[col_idx, 1]),
-                (warped_points[col_idx + col + 1, 0],
-                 warped_points[col_idx + col + 1, 1]),
-                color, thickness)
 
-    # Keep only the points inside the image
-    points = keep_points_inside(warped_points, img.shape[:2])
-    return points
+
+    row_idx  = [random_state.choice([0, col + 1]) for _ in range(nb_rows)]
+    col_idx1 = [random_state.randint(col + 1) for _ in range(nb_rows)]
+    col_idx2 = [random_state.randint(col + 1) for _ in range(nb_rows)]
+    row_color = [get_random_color(background_color) for _ in range(nb_rows)]
+
+
+    col_idx  = [random_state.randint(col + 1) for _ in range(nb_cols)]
+    col_color = [get_random_color(background_color) for _ in range(nb_cols)]
+
+    for i in range(col):
+            colors[i] = (colors[i-1] + 128 + random_state.randint(-30, 30)) % 256
+
+
+    # Translation and Rotation
+    speed_x = random_state.randint(0, 40)-20
+    speed_y = random_state.randint(0, 40)-20
+    speed = np.array([speed_x, speed_y])
+    rotation = get_random_rotation()
+
+
+
+    for t, img in enumerate(bg):
+
+        
+        center = np.average(warped_points, axis=0)
+        warped_points = (np.matmul(warped_points - center, rotation) + center + speed).astype(int)
+        
+            
+        for i in range(col):
+            cv.fillConvexPoly(img, np.array([(warped_points[i, 0],
+                                            warped_points[i, 1]),
+                                            (warped_points[i+1, 0],
+                                            warped_points[i+1, 1]),
+                                            (warped_points[i+col+2, 0],
+                                            warped_points[i+col+2, 1]),
+                                            (warped_points[i+col+1, 0],
+                                            warped_points[i+col+1, 1])]),
+                            colors[i])
+                            
+        for i in range(nb_rows):
+            cv.line(img, (warped_points[row_idx[i] + col_idx1[i], 0],
+                        warped_points[row_idx[i] + col_idx1[i], 1]),
+                    (warped_points[row_idx[i] + col_idx2[i], 0],
+                    warped_points[row_idx[i] + col_idx2[i], 1]),
+                    row_color[i], thickness)
+
+
+        for i in range(nb_cols):
+            cv.line(img, (warped_points[col_idx[i], 0],
+                        warped_points[col_idx[i], 1]),
+                    (warped_points[col_idx[i] + col + 1, 0],
+                    warped_points[col_idx[i] + col + 1, 1]),
+                    col_color[i], thickness)
+
+
+        # Keep only the points inside the image
+        points = keep_points_inside(warped_points, img.shape[:2])
+
+        yield points, img
 
 
 def draw_cube(img, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
