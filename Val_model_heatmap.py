@@ -5,6 +5,7 @@ Date: 2019/12/12
 """
 
 
+import cv2 as cv
 import numpy as np
 import torch
 from torch.autograd import Variable
@@ -114,7 +115,7 @@ class Val_model_heatmap(SuperPointFrontend_torch):
     def heatmap_to_pts(self):
         heatmap_np = self.heatmap
 
-        pts_nms_batch = [self.getPtsFromHeatmap(h) for h in heatmap_np] # [batch, H, W]
+        pts_nms_batch = np.array([self.getPtsFromHeatmap(h) for h in heatmap_np]) # [batch, H, W]
         self.pts_nms_batch = pts_nms_batch
         return pts_nms_batch
 
@@ -158,7 +159,7 @@ class Val_model_heatmap(SuperPointFrontend_torch):
 
 if __name__ == '__main__':
     # filename = 'configs/magicpoint_shapes_subpix.yaml'
-    filename = 'configs/magicpoint_repeatability_heatmap.yaml'
+    filename = 'configs/magicpoint_shapes_pair.yaml'
     import yaml
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -169,7 +170,7 @@ if __name__ == '__main__':
     task = config['data']['dataset']
     # data loading
     from utils.loader import dataLoader_test as dataLoader
-    data = dataLoader(config, dataset='hpatches')
+    data = dataLoader(config, dataset='SyntheticDataset_gaussian')
     test_set, test_loader = data['test_set'], data['test_loader']
 
     # load frontend
@@ -177,27 +178,43 @@ if __name__ == '__main__':
 
     # take one sample
     for i, sample in tqdm(enumerate(test_loader)):
-        if i>1: break
-
-
+        if i>10: break
+ 
         val_agent.loadModel()
         # points from heatmap
         img = sample['image']
-        print("image: ", img.shape)
+        img = np.transpose(img, (0,3,1,2))
+
 
         heatmap_batch = val_agent.run(img.to(device)) # heatmap: numpy [batch, 1, H, W]
         # heatmap to pts 
         pts = val_agent.heatmap_to_pts()
         # print("pts: ", pts)
-        print("pts[0]: ", pts[0].shape)
-        print("pts: ", pts[0][:,:3])
-        
+        # print("pts[0]: ", pts[0].shape)
+        # print("pts: ", pts[0][:,:3])
+        # raise
+
         pts_subpixel = val_agent.soft_argmax_points(pts)
-        print("subpixels: ", pts_subpixel[0][:,:3])
+        # print("subpixels: ", pts_subpixel[0][:3])
+        # raise
 
         # heatmap, pts to desc
         desc_sparse = val_agent.desc_to_sparseDesc()
-        print("desc_sparse[0]: ", desc_sparse[0].shape)
+        # print("desc_sparse[0]: ", desc_sparse[0].shape)
+        # raise
+
+        
+        temp = np.array(img.cpu().data.numpy())
+        temp = temp[0].squeeze() * 256
+        temp = cv.cvtColor(temp, cv.COLOR_GRAY2RGB)
+
+
+        pts = np.transpose(pts.squeeze(), (1,0))
+        for pt in pts:
+            cv.circle(temp, (int(pt[0]), int(pt[1]))    , 2, (0, 255, 0), -1)
+        
+
+        cv.imwrite(str(Path("temp", "{}.png".format(i))), temp)
 
 # pts, desc, _, heatmap
 
