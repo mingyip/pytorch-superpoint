@@ -6,6 +6,7 @@ import math
 import copy
 
 from pathlib import Path
+from shapely.geometry import Polygon
 
 
 random_state = np.random.RandomState(None)
@@ -25,9 +26,17 @@ def get_random_color(background_color):
     return color
 
 
+def get_random_speed():
+    """ Output a random speed_x speed_y"""
+
+    speed_x = random_state.randint(5, 10) * random_state.choice([1, -1])
+    speed_y = random_state.randint(5, 10) * random_state.choice([1, -1])
+    return np.array(speed_x, speed_y)
+
+
 def get_random_rotation():
     """ Output a Rotation matrix between -5 deg and 5 deg"""
-    uni = random_state.uniform(-3, 3)
+    uni = random_state.uniform(3, 5) * random_state.choice([1, -1])
     theta = np.radians(uni)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c,-s), (s, c)))
@@ -84,8 +93,8 @@ def background_generator(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
     colors = [get_random_color(background_color) for _ in range(nb_blobs)]
     radius = [np.random.randint(int(dim * min_rad_ratio),
                                 int(dim * max_rad_ratio)) for _ in range(nb_blobs)]
-    directions = np.concatenate([random_state.randint(0, 20, size=(nb_blobs, 1))-10,
-                            random_state.randint(0, 20, size=(nb_blobs, 1))-10],
+    directions = np.concatenate([random_state.randint(0, 80, size=(nb_blobs, 1))-40,
+                            random_state.randint(0, 80, size=(nb_blobs, 1))-40],
                            axis=1)
     kernel_size = random_state.randint(min_kernel_size, max_kernel_size)
 
@@ -198,6 +207,7 @@ def draw_lines(img_size, bg_config, nb_lines=10):
       nb_lines: maximal number of lines
     """
 
+    
     bg = background_generator(img_size, **bg_config)
     background_color = int(np.mean(next(bg)))
     num_lines = random_state.randint(1, nb_lines)
@@ -223,9 +233,7 @@ def draw_lines(img_size, bg_config, nb_lines=10):
 
     thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
     rotation = [get_random_rotation() for _ in range(len(segments))]
-    speed = np.concatenate([random_state.randint(0, 8, size=(len(segments), 1))-4,
-                            random_state.randint(0, 8, size=(len(segments), 1))-4],
-                            axis=1)
+    speed = [get_random_speed() for _ in range(len(segments))]
     colors = [get_random_color(background_color) for _ in range(len(segments))]
 
 
@@ -247,8 +255,11 @@ def draw_lines(img_size, bg_config, nb_lines=10):
             if intersect(new_seg[:, 0:2], new_seg[:, 2:4], np.array([[x1, y1]]), np.array([[x2, y2]]), 2):
                 x1, y1 = line[0], line[1]
                 x2, y2 = line[2], line[3]
+                addPoint = False
             else:
                 segments[j] = new_line.reshape(-1)
+                addPoint = True
+
 
 
             # Make the lines shorter to prevent overlapping due to the thickness of the lines
@@ -258,12 +269,9 @@ def draw_lines(img_size, bg_config, nb_lines=10):
             y2_pad = (y2 + 3 / thickness[j] * (y1-y2)).astype(int)
             cv.line(img, (x1_pad, y1_pad), (x2_pad, y2_pad), colors[j], thickness[j])
 
-            # Add points in the point list if it is within the boundary
-            if x1_pad > 0 and x1_pad < img_size[1] and y1_pad > 0 and y1_pad < img_size[0]:
-                pts = np.concatenate([pts, np.array([[x1_pad, y1_pad]])], axis=0)
 
-            if x2_pad > 0 and x2_pad < img_size[1] and y2_pad > 0 and y2_pad < img_size[0]:
-                pts = np.concatenate([pts, np.array([[x2_pad, y2_pad]])], axis=0)
+            if addPoint:
+                pts = np.concatenate([pts, keep_points_inside(np.array([[x1_pad, y1_pad], [x2_pad, y2_pad]]), img_size)], axis=0)
 
         yield pts, img
 
@@ -309,17 +317,18 @@ def draw_polygon(img_size, bg_config, max_sides=8):
     points = points[mask, :]
     num_corners = points.shape[0]
     if num_corners < 3:  # not enough corners
-        return draw_polygon(img_size, bg_config, max_sides)
+        draw = draw_polygon(img_size, bg_config, max_sides)
+        for pts, img in draw:
+            yield pts, img
 
     color = get_random_color(int(np.mean(background_color)))
     rotation = get_random_rotation()
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])                  
+    speed = get_random_speed()                
 
 
     # Generate frames
     for i, img in enumerate(bg):
+        
         pts = np.empty((0, 2), dtype=np.int)           
 
         # Rotation
@@ -419,39 +428,42 @@ def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **e
     centers = np.array(centers)
     rads = np.array(rads)
     rotation = [get_random_rotation() for _ in range(len(shapes))]
-    speed_x = [[random_state.randint(0, 40)-20] for _ in range(len(shapes))]
-    speed_y = [[random_state.randint(0, 40)-20] for _ in range(len(shapes))]
-    speed = np.hstack((speed_x, speed_y))
+    speed = np.array([get_random_speed() for _ in range(len(shapes))])
+    colors = [get_random_color(background_color) for _ in range(len(shapes))]
+
 
     # Color the polygon with a custom background
     for i, img in enumerate(bg):
 
         pts = np.empty((0, 2), dtype=np.int)
+        polygons = np.array([Polygon(shp) for shp in shapes])
+
         for j, shp in enumerate(shapes):
 
-            
+
             temp_shp = (np.matmul(shp - centers[j], rotation[j]) + centers[j] + speed[j]).astype(int)
             new_center = centers[j] + speed[j]
 
 
             # Check that the polygon will not overlap with pre-existing shapes
-            temp_centers = centers[np.arange(len(centers))!=j]
-            temp_rads = rads[np.arange(len(rads))!=j]
-            if not overlap(new_center, rad, temp_centers, temp_rads):
+
+            temp_polygons = polygons[np.arange(len(polygons))!=j]
+            poly = Polygon(temp_shp)
+            is_collision = np.array([poly.intersects(p) for p in temp_polygons])
+
+            if not is_collision.any():
                 shapes[j] = temp_shp
                 centers[j] = new_center
-
+                # We skip static shapes and do not count their corners
+                pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
 
             corners = shp.reshape((-1, 1, 2))
-            mask = np.zeros(img.shape, np.uint8)
-            custom_bg = generate_custom_background(img.shape, background_color, **extra)
-            cv.fillPoly(mask, [corners], 255)
-            locs = np.where(mask != 0)
-            img[locs[0], locs[1]] = custom_bg[locs[0], locs[1]]
-
-    
-            # check if outside the boundary
-            pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
+            cv.fillPoly(img, [corners], colors[j])
+            # mask = np.zeros(img.shape, np.uint8)
+            # custom_bg = generate_custom_background(img.shape, background_color, **extra)
+            # cv.fillPoly(mask, [corners], colors[j])
+            # locs = np.where(mask != 0)
+            # img[locs[0], locs[1]] = custom_bg[locs[0], locs[1]]            
 
         yield pts, img
 
@@ -489,9 +501,7 @@ def draw_ellipses(img_size, bg_config, nb_ellipses=20):
     colors = [get_random_color(background_color) for _ in range(len(centers))]
     angles = [random_state.rand()*90 for _ in range(len(centers))]
     rotation = [random_state.rand()*10-5 for _ in range(len(centers))]
-    speed_x = [[random_state.randint(0, 40)-20] for _ in range(len(centers))]
-    speed_y = [[random_state.randint(0, 40)-20] for _ in range(len(centers))]
-    speed = np.hstack((speed_x, speed_y))
+    speed = np.array([get_random_speed() for _ in range(len(centers))])
 
     for i, img in enumerate(bg):
         
@@ -539,9 +549,7 @@ def draw_star(img_size, bg_config, nb_branches=6):
     points = np.concatenate(([[x, y]], points), axis=0)
     color = get_random_color(background_color)
     rotation = get_random_rotation()
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])
+    speed = get_random_speed()
 
     for i, img in enumerate(bg):
         pts = np.empty((0, 2), dtype=np.int)
@@ -664,9 +672,7 @@ def draw_checkerboard(img_size, bg_config, max_rows=7, max_cols=7, transform_par
 
 
     # Speed and Rotation
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])
+    speed = get_random_speed()
     rotation = get_random_rotation()
 
 
@@ -818,9 +824,7 @@ def draw_stripes(img_size, bg_config, max_nb_cols=13, min_width_ratio=0.04,
 
 
     # Translation and Rotation
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])
+    speed = get_random_speed()
     rotation = get_random_rotation()
 
 
@@ -897,7 +901,7 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
                      [0, ly, lz],
                      [lx, ly, lz]])
     rot_angles = random_state.rand(3) * 3 * math.pi / 10. + math.pi / 10.
-    rotation = [random_state.uniform(-0.01, 0.01) for _ in range(3)]
+    rotation = [random_state.uniform(0.01, 0.02) * random_state.choice([1, -1]) for _ in range(3)]
 
 
     scaling = np.array([[scale_interval[0] +
@@ -916,6 +920,7 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
 
     col_face = get_random_color(background_color)
     thickness = random_state.randint(min_dim * 0.003, min_dim * 0.015)
+    speed = get_random_speed()
 
     for i in [0, 1, 2]:
             for j in [0, 1, 2, 3]:
@@ -954,11 +959,13 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
                                                         np.dot(rotation_3,
                                                                 np.transpose(cube))))))
 
+
         # The hidden corner is 0 by construction
         # The front one is 7
         cube = cube[:, :2]  # project on the plane z=0
         cube = cube.astype(int)
         points = cube[1:, :]  # get rid of the hidden corner
+        points += t * speed
 
         # Get the three visible faces
         faces = np.array([[7, 3, 1, 5], [7, 5, 4, 6], [7, 6, 2, 3]])
