@@ -6,6 +6,7 @@ import math
 import copy
 
 from pathlib import Path
+from shapely.geometry import Polygon
 
 
 random_state = np.random.RandomState(None)
@@ -25,9 +26,17 @@ def get_random_color(background_color):
     return color
 
 
+def get_random_speed():
+    """ Output a random speed_x speed_y"""
+
+    speed_x = random_state.randint(8, 12) * random_state.choice([1, -1])
+    speed_y = random_state.randint(8, 12) * random_state.choice([1, -1])
+    return np.array(speed_x, speed_y)
+
+
 def get_random_rotation():
     """ Output a Rotation matrix between -5 deg and 5 deg"""
-    uni = random_state.uniform(-3, 3)
+    uni = random_state.uniform(5, 8) * random_state.choice([1, -1])
     theta = np.radians(uni)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c,-s), (s, c)))
@@ -84,8 +93,8 @@ def background_generator(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
     colors = [get_random_color(background_color) for _ in range(nb_blobs)]
     radius = [np.random.randint(int(dim * min_rad_ratio),
                                 int(dim * max_rad_ratio)) for _ in range(nb_blobs)]
-    directions = np.concatenate([random_state.randint(0, 20, size=(nb_blobs, 1))-10,
-                            random_state.randint(0, 20, size=(nb_blobs, 1))-10],
+    directions = np.concatenate([random_state.randint(0, 80, size=(nb_blobs, 1))-40,
+                            random_state.randint(0, 80, size=(nb_blobs, 1))-40],
                            axis=1)
     kernel_size = random_state.randint(min_kernel_size, max_kernel_size)
 
@@ -192,12 +201,13 @@ def keep_points_inside(points, size):
     return points[mask, :]
 
 
-def draw_lines(img_size, bg_config, nb_lines=10):
+def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     """ Draw random lines and output the positions of the endpoints
     Parameters:
       nb_lines: maximal number of lines
     """
 
+    
     bg = background_generator(img_size, **bg_config)
     background_color = int(np.mean(next(bg)))
     num_lines = random_state.randint(1, nb_lines)
@@ -223,16 +233,16 @@ def draw_lines(img_size, bg_config, nb_lines=10):
 
     thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
     rotation = [get_random_rotation() for _ in range(len(segments))]
-    speed = np.concatenate([random_state.randint(0, 8, size=(len(segments), 1))-4,
-                            random_state.randint(0, 8, size=(len(segments), 1))-4],
-                            axis=1)
+    speed = [get_random_speed() for _ in range(len(segments))]
     colors = [get_random_color(background_color) for _ in range(len(segments))]
 
 
+    pts_list = []
+    img_list = []
     # Generate frames
-    for i, img in enumerate(bg):
+    for i in range(num_frames):
 
-
+        img = next(bg)
         pts = np.empty((0, 2), dtype=np.int)
         for j, line in enumerate(segments):
 
@@ -241,15 +251,15 @@ def draw_lines(img_size, bg_config, nb_lines=10):
             x1, y1 = new_line[0, 0], new_line[0, 1]
             x2, y2 = new_line[1, 0], new_line[1, 1]
 
-
             # Check that there is no overlap
             new_seg = segments[np.arange(len(segments))!=j]
             if intersect(new_seg[:, 0:2], new_seg[:, 2:4], np.array([[x1, y1]]), np.array([[x2, y2]]), 2):
                 x1, y1 = line[0], line[1]
                 x2, y2 = line[2], line[3]
+                isMoving = False
             else:
                 segments[j] = new_line.reshape(-1)
-
+                isMoving = True
 
             # Make the lines shorter to prevent overlapping due to the thickness of the lines
             x1_pad = (x1 + 3 / thickness[j] * (x2-x1)).astype(int)
@@ -258,19 +268,19 @@ def draw_lines(img_size, bg_config, nb_lines=10):
             y2_pad = (y2 + 3 / thickness[j] * (y1-y2)).astype(int)
             cv.line(img, (x1_pad, y1_pad), (x2_pad, y2_pad), colors[j], thickness[j])
 
-            # Add points in the point list if it is within the boundary
-            if x1_pad > 0 and x1_pad < img_size[1] and y1_pad > 0 and y1_pad < img_size[0]:
-                pts = np.concatenate([pts, np.array([[x1_pad, y1_pad]])], axis=0)
+            if isMoving:
+                pts = np.concatenate([pts, keep_points_inside(np.array([[x1_pad, y1_pad], [x2_pad, y2_pad]]), img_size)], axis=0)
 
-            if x2_pad > 0 and x2_pad < img_size[1] and y2_pad > 0 and y2_pad < img_size[0]:
-                pts = np.concatenate([pts, np.array([[x2_pad, y2_pad]])], axis=0)
+        pts_list.append(pts)
+        img_list.append(img)
 
-        yield pts, img
+        if len(pts) == 0:
+            return draw_lines(img_size, num_frames, bg_config, nb_lines)
+
+    return np.array(pts_list), np.array(img_list)
 
 
-
-
-def draw_polygon(img_size, bg_config, max_sides=8):
+def draw_polygon(img_size, num_frames, bg_config, max_sides=8):
     """ Draw a polygon with a random number of corners
     and return the corner points
     Parameters:
@@ -309,20 +319,23 @@ def draw_polygon(img_size, bg_config, max_sides=8):
     points = points[mask, :]
     num_corners = points.shape[0]
     if num_corners < 3:  # not enough corners
-        return draw_polygon(img_size, bg_config, max_sides)
+        return draw_polygon(img_size, num_frames, bg_config, max_sides)
+
 
     color = get_random_color(int(np.mean(background_color)))
     rotation = get_random_rotation()
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])                  
+    speed = get_random_speed()                
 
 
+    pts_list = []
+    img_list = []
     # Generate frames
-    for i, img in enumerate(bg):
+    for i in range(num_frames):
+        
+        img = next(bg)
         pts = np.empty((0, 2), dtype=np.int)           
 
-        # Rotation
+        # Translation + Rotation
         center = np.average(points, axis=0)
         points = (np.matmul(points - center, rotation) + center + speed).astype(int)
 
@@ -332,7 +345,13 @@ def draw_polygon(img_size, bg_config, max_sides=8):
         # Add points in the point list if it is within the boundary
         pts = keep_points_inside(points, img_size)
 
-        yield pts, img
+        pts_list.append(pts)
+        img_list.append(img)
+
+        if len(pts) == 0:
+            return draw_polygon(img_size, num_frames, bg_config, max_sides)
+
+    return np.array(pts_list), np.array(img_list)
 
 
 def overlap(center, rad, centers, rads):
@@ -353,7 +372,7 @@ def angle_between_vectors(v1, v2):
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
-def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **extra):
+def draw_multiple_polygons(img_size, num_frames, bg_config, max_sides=8, nb_polygons=30, **extra):
     """ Draw multiple polygons with a random number of corners
     and return the corner points
     Parameters:
@@ -419,44 +438,48 @@ def draw_multiple_polygons(img_size, bg_config, max_sides=8, nb_polygons=30, **e
     centers = np.array(centers)
     rads = np.array(rads)
     rotation = [get_random_rotation() for _ in range(len(shapes))]
-    speed_x = [[random_state.randint(0, 40)-20] for _ in range(len(shapes))]
-    speed_y = [[random_state.randint(0, 40)-20] for _ in range(len(shapes))]
-    speed = np.hstack((speed_x, speed_y))
+    speed = np.array([get_random_speed() for _ in range(len(shapes))])
+    colors = [get_random_color(background_color) for _ in range(len(shapes))]
+
 
     # Color the polygon with a custom background
-    for i, img in enumerate(bg):
+    pts_list = []
+    img_list = []
+    for i in range(num_frames):
 
+        img = next(bg)
         pts = np.empty((0, 2), dtype=np.int)
+        polygons = np.array([Polygon(shp) for shp in shapes])
+
         for j, shp in enumerate(shapes):
 
-            
             temp_shp = (np.matmul(shp - centers[j], rotation[j]) + centers[j] + speed[j]).astype(int)
             new_center = centers[j] + speed[j]
 
-
             # Check that the polygon will not overlap with pre-existing shapes
-            temp_centers = centers[np.arange(len(centers))!=j]
-            temp_rads = rads[np.arange(len(rads))!=j]
-            if not overlap(new_center, rad, temp_centers, temp_rads):
+            temp_polygons = polygons[np.arange(len(polygons))!=j]
+            poly = Polygon(temp_shp)
+            is_collision = np.array([poly.intersects(p) for p in temp_polygons])
+
+            if not is_collision.any():
                 shapes[j] = temp_shp
                 centers[j] = new_center
-
+                # We skip static shapes and do not count their corners
+                pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
 
             corners = shp.reshape((-1, 1, 2))
-            mask = np.zeros(img.shape, np.uint8)
-            custom_bg = generate_custom_background(img.shape, background_color, **extra)
-            cv.fillPoly(mask, [corners], 255)
-            locs = np.where(mask != 0)
-            img[locs[0], locs[1]] = custom_bg[locs[0], locs[1]]
+            cv.fillPoly(img, [corners], colors[j])
 
+        pts_list.append(pts)
+        img_list.append(img)
     
-            # check if outside the boundary
-            pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
+        if len(pts) == 0:
+            draw_multiple_polygons(img_size, num_frames, bg_config, max_sides, nb_polygons)
 
-        yield pts, img
+    return np.array(pts_list), np.array(img_list)
 
 
-def draw_ellipses(img_size, bg_config, nb_ellipses=20):
+def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
     """ Draw several ellipses
     Parameters:
       nb_ellipses: maximal number of ellipses
@@ -489,12 +512,13 @@ def draw_ellipses(img_size, bg_config, nb_ellipses=20):
     colors = [get_random_color(background_color) for _ in range(len(centers))]
     angles = [random_state.rand()*90 for _ in range(len(centers))]
     rotation = [random_state.rand()*10-5 for _ in range(len(centers))]
-    speed_x = [[random_state.randint(0, 40)-20] for _ in range(len(centers))]
-    speed_y = [[random_state.randint(0, 40)-20] for _ in range(len(centers))]
-    speed = np.hstack((speed_x, speed_y))
+    speed = np.array([get_random_speed() for _ in range(len(centers))])
 
-    for i, img in enumerate(bg):
+
+    img_list = []
+    for i in range(num_frames):
         
+        img = next(bg)
         for j, (center, rad, angle, R, S, color) in enumerate(zip(centers, rads, angles, rotation, speed, colors)):
 
             new_center = center + S
@@ -509,12 +533,13 @@ def draw_ellipses(img_size, bg_config, nb_ellipses=20):
                 centers[j] = new_center
 
             cv.ellipse(img, (center[0], center[1]), (rad[0], rad[1]), angle + R, 0, 360, color, -1)
+        img_list.append(img)
 
         # cv.imwrite(str(Path('temp', "{}.png".format(i))), img)
-        yield np.empty((0, 2), dtype=np.int), img
+    return np.array([np.empty((0, 2), dtype=np.int) for _ in range(num_frames)]), np.array(img_list)
 
 
-def draw_star(img_size, bg_config, nb_branches=6):
+def draw_star(img_size, num_frames, bg_config, nb_branches=6):
     """ Draw a star and output the interest points
     Parameters:
       nb_branches: number of branches of the star
@@ -539,14 +564,15 @@ def draw_star(img_size, bg_config, nb_branches=6):
     points = np.concatenate(([[x, y]], points), axis=0)
     color = get_random_color(background_color)
     rotation = get_random_rotation()
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])
+    speed = get_random_speed()
 
-    for i, img in enumerate(bg):
+
+    pts_list = []
+    img_list = []
+    for i in range(num_frames):
+
+        img = next(bg)
         pts = np.empty((0, 2), dtype=np.int)
-        if i > 30:
-            break
 
         center = (points[0][0], points[0][1])
         points = (np.matmul(points - center, rotation) + center + speed).astype(int)
@@ -555,16 +581,20 @@ def draw_star(img_size, bg_config, nb_branches=6):
                     (points[j][0], points[j][1]),
                     color, thickness)
 
-        # cv.imwrite(str(Path("temp", "{}.png".format(i))), img)
-
         # Keep only the points inside the image
         pts = keep_points_inside(points, img_size)
 
-        yield pts, img
+        if len(pts) == 0:
+            draw_star(img_size, num_frames, bg_config, nb_branches)
+
+        pts_list.append(pts)
+        img_list.append(img)
+
+    return np.array(pts_list), np.array(img_list)
 
 
 
-def draw_checkerboard(img_size, bg_config, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)):
+def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)):
     """ Draw a checkerboard and output the interest points
     Parameters:
       max_rows: maximal number of rows + 1
@@ -664,15 +694,15 @@ def draw_checkerboard(img_size, bg_config, max_rows=7, max_cols=7, transform_par
 
 
     # Speed and Rotation
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])
+    speed = get_random_speed()
     rotation = get_random_rotation()
 
 
+    img_list = []
+    pts_list = []
+    for t in range(num_frames):
 
-    for t, img in enumerate(bg):
-
+        img = next(bg)
         center = np.average(warped_points, axis=0)
         warped_points = (np.matmul(warped_points - center, rotation) + center + speed).astype(int)
 
@@ -707,18 +737,19 @@ def draw_checkerboard(img_size, bg_config, max_rows=7, max_cols=7, transform_par
                     warped_points[row_idx2[i] * (cols + 1) + col_idx[i], 1]),
                     cols_colors[i], thickness)
 
-
-
-
-
-
         # Keep only the points inside the image
         points = keep_points_inside(warped_points, img.shape[:2])
 
-        yield points, img
+        if (len(points)) == 0:
+            draw_checkerboard(img_size, num_frames, bg_config, max_rows, max_cols, transform_params)
+
+        pts_list.append(points)
+        img_list.append(img)
+
+    return np.array(pts_list), np.array(img_list)
 
 
-def draw_stripes(img_size, bg_config, max_nb_cols=13, min_width_ratio=0.04,
+def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_ratio=0.04,
                  transform_params=(0.05, 0.15)):
     """ Draw stripes in a distorted rectangle and output the interest points
     Parameters:
@@ -818,16 +849,16 @@ def draw_stripes(img_size, bg_config, max_nb_cols=13, min_width_ratio=0.04,
 
 
     # Translation and Rotation
-    speed_x = random_state.randint(0, 40)-20
-    speed_y = random_state.randint(0, 40)-20
-    speed = np.array([speed_x, speed_y])
+    speed = get_random_speed()
     rotation = get_random_rotation()
 
 
-
-    for t, img in enumerate(bg):
+    img_list = []
+    pts_list = []
+    for t in range(num_frames):
 
         
+        img = next(bg)
         center = np.average(warped_points, axis=0)
         warped_points = (np.matmul(warped_points - center, rotation) + center + speed).astype(int)
         
@@ -862,10 +893,22 @@ def draw_stripes(img_size, bg_config, max_nb_cols=13, min_width_ratio=0.04,
         # Keep only the points inside the image
         points = keep_points_inside(warped_points, img.shape[:2])
 
-        yield points, img
+        if len(points) == 0:
+            return draw_stripes(img_size, 
+                        num_frames, 
+                        bg_config, 
+                        max_nb_cols, 
+                        min_width_ratio,
+                        transform_params)
+
+        pts_list.append(points)
+        img_list.append(img)
+
+    # print(len(pts_list), len(img_list))
+    return np.array(pts_list), np.array(img_list)
 
 
-def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
+def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
               scale_interval=(0.4, 0.6), trans_interval=(0.5, 0.2)):
     """ Draw a 2D projection of a cube and output the corners that are visible
     Parameters:
@@ -897,7 +940,7 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
                      [0, ly, lz],
                      [lx, ly, lz]])
     rot_angles = random_state.rand(3) * 3 * math.pi / 10. + math.pi / 10.
-    rotation = [random_state.uniform(-0.01, 0.01) for _ in range(3)]
+    rotation = [random_state.uniform(0.01, 0.02) * random_state.choice([1, -1]) for _ in range(3)]
 
 
     scaling = np.array([[scale_interval[0] +
@@ -916,6 +959,7 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
 
     col_face = get_random_color(background_color)
     thickness = random_state.randint(min_dim * 0.003, min_dim * 0.015)
+    speed = get_random_speed()
 
     for i in [0, 1, 2]:
             for j in [0, 1, 2, 3]:
@@ -924,8 +968,11 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
                             % 256
 
 
-    for t, img in enumerate(bg):
+    img_list = []
+    pts_list = []
+    for t in range(num_frames):
 
+        img = next(bg)
         cube = np.array([[0, 0, 0],
                      [lx, 0, 0],
                      [0, ly, 0],
@@ -954,11 +1001,13 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
                                                         np.dot(rotation_3,
                                                                 np.transpose(cube))))))
 
+
         # The hidden corner is 0 by construction
         # The front one is 7
         cube = cube[:, :2]  # project on the plane z=0
         cube = cube.astype(int)
         points = cube[1:, :]  # get rid of the hidden corner
+        points += t * speed
 
         # Get the three visible faces
         faces = np.array([[7, 3, 1, 5], [7, 5, 4, 6], [7, 6, 2, 3]])
@@ -975,7 +1024,19 @@ def draw_cube(img_size, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 1
 
         # Keep only the points inside the image
         points = keep_points_inside(points, img_size[:2])
-        yield points, img
+
+        if len(points) == 0:
+            return draw_cube(img_size, 
+                            num_frames, 
+                            bg_config, 
+                            min_size_ratio, 
+                            min_angle_rot, 
+                            scale_interval, 
+                            trans_interval)
+
+        pts_list.append(points)
+        img_list.append(img)
+    return np.array(pts_list), np.array(img_list)
 
 
 def gaussian_noise(img):

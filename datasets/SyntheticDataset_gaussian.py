@@ -126,32 +126,37 @@ class SyntheticDataset_gaussian(data.Dataset):
 
 
         for split, size in self.config["generation"]["split_sizes"].items():
-            im_dir, pts_dir = [Path(temp_dir, i, split) for i in ["images", "points"]]
+            im_dir, pts_dir, chk_dir = [Path(temp_dir, i, split) for i in ["images", "points", "check"]]
             im_dir.mkdir(parents=True, exist_ok=True)
             pts_dir.mkdir(parents=True, exist_ok=True)
+            chk_dir.mkdir(parents=True, exist_ok=True)
 
+
+
+            count = 0
             for i in tqdm(range(size), desc=split, leave=False):
 
-                generator = getattr(synthetic_dataset, primitive)(image_size,
+                pts_list, img_list = getattr(synthetic_dataset, primitive)(image_size,
+                                                                frames,
                                                                 bg_config,
                                                                 **primitive_config
                                                             )
 
 
-                for j, (pts, img) in enumerate(generator):
+                for j, (pts, img) in enumerate(zip(pts_list, img_list)):
                     if j > frames:
                         break
 
-
-                    # for pt in pts:
-                    #     cv2.circle(img, (pt[0], pt[1]), 20, (0, 255, 0), -1)
+                    check_img = np.copy(img)
+                    for pt in pts:
+                        cv2.circle(check_img, (pt[0], pt[1]), 20, (0, 255, 0), -1)
 
                     pts = np.flip(pts, 1)  # reverse convention with opencv
 
                     
                     b = config["preprocessing"]["blur_size"]
                     img = cv2.GaussianBlur(img, (b, b), 0)
-                    
+
                     pts = (
                         pts
                         * np.array(config["preprocessing"]["resize"], np.float)
@@ -165,15 +170,19 @@ class SyntheticDataset_gaussian(data.Dataset):
 
                     im_folder = Path(im_dir, "{:04d}".format(i))
                     pts_folder = Path(pts_dir, "{:04d}".format(i))
+                    chk_folder = Path(chk_dir, "{:04d}".format(i))
                     im_folder.mkdir(parents=True, exist_ok=True)
                     pts_folder.mkdir(parents=True, exist_ok=True)
+                    chk_folder.mkdir(parents=True, exist_ok=True)
 
-                    # img = cv2.putText(img, str(len(pts)), (5, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA) 
+                    check_img = cv2.putText(check_img, str(len(pts)), (5, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA) 
 
                     cv2.imwrite(str(Path(im_folder, "{:02d}.png".format(j))), img)
+                    cv2.imwrite(str(Path(chk_folder, "{:02d}.png".format(j))), check_img)
                     np.save(Path(pts_folder, "{:02d}.npy".format(j)), pts)
 
         raise
+
 
         # Pack into a tar file
         tar = tarfile.open(tar_path, mode="w:gz")
@@ -260,21 +269,24 @@ class SyntheticDataset_gaussian(data.Dataset):
         basepath.mkdir(parents=True, exist_ok=True)
 
         splits = {s: {"images": [], "points": []} for s in [self.action]}
+
         for primitive in primitives:
             tar_path = Path(basepath, "{}.tar.gz".format(primitive))
             if not tar_path.exists():
                 self.dump_primitive_data(primitive, tar_path, self.config)
 
-            # Untar locally
-            logging.info("Extracting archive for primitive {}.".format(primitive))
-            logging.info(f"tar_path: {tar_path}")
-            tar = tarfile.open(tar_path)
+            # # Untar locally
+            # logging.info("Extracting archive for primitive {}.".format(primitive))
+            # logging.info(f"tar_path: {tar_path}")
+            # tar = tarfile.open(tar_path)
             # temp_dir = Path(os.environ['TMPDIR'])
-            temp_dir = Path(TMPDIR)
-            tar.extractall(path=temp_dir)
-            tar.close()
+            # tar.extractall(path=temp_dir)
+            # tar.close()
 
-            # Gather filenames in all splits, optionally truncate
+
+        # Gather filenames in all splits, optionally truncate
+        for primitive in primitives:
+            temp_dir = Path(TMPDIR)
             truncate = self.config["truncate"].get(primitive, 1)
             path = Path(temp_dir, primitive)
             for s in splits:
