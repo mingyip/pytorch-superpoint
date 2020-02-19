@@ -77,6 +77,7 @@ model:
     kernel_reg: 0.
     detection_threshold: 0.001 # 1/65
     nms: 4
+    nn_thresh: 1.0 # 0.7
     lambda_loss: 0 # disable descriptor loss
     dense_loss:
         enable: false
@@ -92,6 +93,7 @@ model:
             dist: 'cos'
             method: '2d'
     other_settings: 'train 2d, gauss 0.5'
+    # pretrained: 'logs/magicpoint_synth/checkpoints/superPointNet_16001_checkpoint.pth.tar'
 
 retrain: True # set true for new model
 reset_iter: True

@@ -57,10 +57,10 @@ class SyntheticDataset_gaussian(data.Dataset):
         "add_augmentation_to_test_set": False,
         "num_parallel_calls": 10,
         "generation": {
-            "split_sizes": {"training": 10000, "validation": 200, "test": 500},
+            "split_sizes": {"training": 2000, "validation": 100, "test": 250},
             "image_size": [960, 1280],
             "random_seed": 0,
-            "num_frames": 10,
+            "num_frames": 5,
             "params": {
                 "generate_background": {
                     "min_kernel_size": 150,
@@ -93,13 +93,13 @@ class SyntheticDataset_gaussian(data.Dataset):
     else:
         drawing_primitives = [
             "draw_lines",
-            # "draw_polygon",
-            # "draw_multiple_polygons",
-            # "draw_ellipses",
-            # "draw_star",
-            # "draw_checkerboard",
-            # "draw_stripes",
-            # "draw_cube",
+            "draw_polygon",
+            "draw_multiple_polygons",
+            "draw_ellipses",
+            "draw_star",
+            "draw_checkerboard",
+            "draw_stripes",
+            "draw_cube",
             # "gaussian_noise",
         ]
     print(drawing_primitives)
@@ -142,6 +142,7 @@ class SyntheticDataset_gaussian(data.Dataset):
                                                                 **primitive_config
                                                             )
 
+                # old_pts = None
 
                 for j, (pts, img) in enumerate(zip(pts_list, img_list)):
                     if j > frames:
@@ -181,7 +182,7 @@ class SyntheticDataset_gaussian(data.Dataset):
                     cv2.imwrite(str(Path(chk_folder, "{:02d}.png".format(j))), check_img)
                     np.save(Path(pts_folder, "{:02d}.npy".format(j)), pts)
 
-        raise
+                    # old_pts = pts
 
 
         # Pack into a tar file
@@ -191,9 +192,6 @@ class SyntheticDataset_gaussian(data.Dataset):
         # shutil.rmtree(temp_dir)
         tf.logging.info("Tarfile dumped to {}.".format(tar_path))
 
-
-        print("DONE")
-        raise
 
     def parse_primitives(self, names, all_primitives):
         p = (
@@ -313,6 +311,7 @@ class SyntheticDataset_gaussian(data.Dataset):
             sequence_set.append(sample)
         self.samples = sequence_set
 
+
     # def putGaussianMaps_par(self, center):
     #     crop_size_y = self.params_transform['crop_size_y']
     #     crop_size_x = self.params_transform['crop_size_x']
@@ -374,6 +373,7 @@ class SyntheticDataset_gaussian(data.Dataset):
                 numpy (H, W)
             :return:
             """
+
             augmentation = self.ImgAugTransform(**self.config["augmentation"])
             img = img[:, :, np.newaxis]
             img = augmentation(img)

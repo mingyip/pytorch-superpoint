@@ -102,8 +102,8 @@ def dataLoader_test(config, dataset='syn', warp_input=False, export_task='train'
     }
     test_loader = None
     if dataset == 'syn':
-        from datasets.SyntheticDataset import SyntheticDataset
-        test_set = SyntheticDataset(
+        from datasets.SyntheticDataset_gaussian import SyntheticDataset_gaussian
+        test_set = SyntheticDataset_gaussian(
             transform=data_transforms['test'],
             train=False,
             warp_input=warp_input,
