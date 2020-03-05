@@ -12,13 +12,13 @@ from pathlib import Path
 class Event_simulator():
     
     default_config = {
-        "contrast_threshold_pos": 1.0,  # Contrast threshold (positive)
-        "contrast_threshold_neg": 1.0,  # Contrast threshold  (negative))
+        "contrast_threshold_pos": 0.15,  # Contrast threshold (positive)
+        "contrast_threshold_neg": 0.15,  # Contrast threshold  (negative))
         "contrast_threshold_sigma_pos": 0.021,  # Standard deviation of contrast threshold (positive)
         "contrast_threshold_sigma_neg": 0.021,  # Standard deviation of contrast threshold  (negative))
         "refractory_period_ns": 0,  # Refractory period (time during which a pixel cannot fire events just after it fired one), in nanoseconds
         "use_log_image": True,      # Whether to convert images to log images in the preprocessing step.
-        "log_eps": 0.001,   # Epsilon value used to convert images to log: L = log(eps + I / 255.0).
+        "log_eps": 0.1,   # Epsilon value used to convert images to log: L = log(eps + I / 255.0).
         "random_seed": 0,   # Random seed used to generate the trajectories. If set to 0 the current time(0) is taken as seed.
         "frame_rate": 1200, # Specifies the input video framerate (e.g. 1200 fps)
 
@@ -37,8 +37,8 @@ class Event_simulator():
         if self.config["use_log_image"]:
             img = cv.log(self.config["log_eps"] + img)
 
-        self.last_img = img
-        self.ref_values = np.zeros_like(img)
+        self.last_img = img.copy()
+        self.ref_values = img.copy()
         self.last_event_timestamp = np.zeros_like(img)
         self.current_time = time
         self.H, self.W = img.shape
@@ -92,7 +92,6 @@ class Event_simulator():
                         c += np.random.normal(0, sigma_c, 1).squeeze()
                         c = np.maximum(minimum_contrast_threshold, c)
 
-
                     curr_cross = prev_cross
                     all_crossings = False
 
@@ -116,7 +115,7 @@ class Event_simulator():
                                 self.last_event_timestamp[y, x] = t
 
                             self.ref_values[y, x] = curr_cross
-                        
+                            
                         else:
                             all_crossings = True
 
@@ -159,11 +158,11 @@ if __name__ == "__main__":
 
         for evt in events:
             if evt[3]:
-                raw[evt[1], evt[0], 0] = 255
+                raw[int(evt[1]), int(evt[0]), 2] = 255
             else:
-                raw[evt[1], evt[0], 2] = 255
+                raw[int(evt[1]), int(evt[0]), 0] = 255
 
         cv.imwrite("{}.png".format(i), raw)
 
-        if i > 100:
-            raise
+        # if i > 4:
+        #     raise
