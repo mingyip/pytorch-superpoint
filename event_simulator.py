@@ -68,61 +68,60 @@ class Event_simulator():
         if self.config["use_log_image"]:
             img = cv.log(self.config["log_eps"] + img)
 
-        events = []
-        for y in range(H):
-            for x in range(W):
 
-                itdt = img[y, x]
-                it = self.last_img[y, x]
-                prev_cross = self.ref_values[y, x]
-
-
-                if abs(it - itdt) > tolerance:
-
-                    if itdt >= it:
-                        pol = 1.0
-                        c = cp
-                        sigma_c = sigma_cp
-                    else:
-                        pol = -1.0
-                        c = cm
-                        sigma_c = sigma_cm
-
-                    if sigma_c > 0:
-                        c += np.random.normal(0, sigma_c, 1).squeeze()
-                        c = np.maximum(minimum_contrast_threshold, c)
-
-                    curr_cross = prev_cross
-                    all_crossings = False
-
-                    while not all_crossings:
-                        curr_cross += pol * c
-
-                        if (pol > 0 and curr_cross > it and curr_cross <= itdt) \
-                            or (pol < 0 and curr_cross < it and curr_cross >= itdt):
-
-                            edt = (curr_cross - it) * delta_t / (itdt -it)
-                            t = self.current_time + edt
-
-                            # # check that pixel (x,y) is not currently in a "refractory" state
-                            # # i.e. |t-that last_timestamp(x,y)| >= refractory_period
-                            last_stamp_at_xy = self.last_event_timestamp[y, x]
-
-                            assert t > last_stamp_at_xy
-                            dt = t - last_stamp_at_xy
-                            if last_stamp_at_xy == 0 or dt >= refractory_period:
-                                events.append([x, y, t, int(pol > 0)])
-                                self.last_event_timestamp[y, x] = t
-
-                            self.ref_values[y, x] = curr_cross
-                            
-                        else:
-                            all_crossings = True
+        # Init arrays for later calculation
+        img_diff = img - self.last_img
+        abs_diff = abs(img_diff)
+        update_mask = abs_diff > tolerance
+        poliarity = img_diff >= 0
 
 
+        # Sample Positive Events
+        stepsize_pos = np.full_like(img, cp) + np.random.normal(0, sigma_cp, [self.H, self.W])
+        stepsize_pos = np.maximum(minimum_contrast_threshold, stepsize_pos)
+        time_stepsize_pos = stepsize_pos * delta_t / abs_diff
+
+        max_num_steps = int(np.max(np.floor(np.divide(abs_diff, stepsize_pos))))
+        max_num_steps = np.array([i+1 for i in range(max_num_steps)])
+
+        grid_pos = np.multiply(max_num_steps[None,None,:], stepsize_pos[:,:,None])
+        time_grid_pos = np.multiply(max_num_steps[None,None,:], time_stepsize_pos[:,:,None])
+
+        events_mask = grid_pos + self.last_img[:,:,None] < img[:,:,None]
+        indices = np.where(events_mask)
+        timestamp = time + time_grid_pos[events_mask]
+        y = np.array(indices[0], dtype=float)
+        x = np.array(indices[1], dtype=float)
+        p = np.ones(len(timestamp), dtype=float)
+
+        events_pos = np.dstack((x, y, timestamp, p)).squeeze()
+        
+       
+        # Sample Negative Events
+        stepsize_neg = np.full_like(img, cm) + np.random.normal(0, sigma_cm, [self.H, self.W])
+        stepsize_neg = np.maximum(minimum_contrast_threshold, stepsize_neg)
+        time_stepsize_neg = stepsize_neg * delta_t / abs_diff
+
+        max_num_steps = int(np.max(np.floor(np.divide(abs_diff, stepsize_neg))))
+        max_num_steps = np.array([i+1 for i in range(max_num_steps)])
+
+        grid_neg = np.multiply(max_num_steps[None,None,:], stepsize_neg[:,:,None])
+        time_grid_neg = np.multiply(max_num_steps[None,None,:], time_stepsize_neg[:,:,None])
+
+        events_mask =  self.last_img[:,:,None] - grid_neg > img[:,:,None]
+        indices = np.where(events_mask)
+        timestamp = time + time_grid_neg[events_mask]
+        y = np.array(indices[0], dtype=float)
+        x = np.array(indices[1], dtype=float)
+        p = np.zeros(len(timestamp), dtype=float)
+
+        events_neg = np.dstack((x, y, timestamp, p)).squeeze()
+
+
+        # Set time and image for next image
         self.current_time = time
         self.last_img = img
-        events = np.array(events)
+        events = np.concatenate((events_pos, events_neg))
         events = events[events[:,2].argsort()]
 
         return events
