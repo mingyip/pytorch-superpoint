@@ -123,7 +123,7 @@ class Event_simulator():
         self.current_time = time
         self.last_img = img
         events = np.concatenate((events_pos, events_neg))
-        events = events[events[:,2].argsort()]
+        # events = events[events[:,2].argsort()]
 
         return events
 
