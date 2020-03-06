@@ -1,6 +1,7 @@
 
 import cv2 as cv
 import numpy as np
+import time as timer
 
 from pathlib import Path
 
@@ -145,23 +146,42 @@ if __name__ == "__main__":
     # print(img)
     # raise
 
+    start = timer.time()
+    write_count = 0
+    synthese_count = 0
     for i, img_path in enumerate(e[1:]):
-        # t = np.random.uniform(0, 0.001, 1).squeeze()
+        print(img_path)
+
+
+        synthese_start = timer.time()
         current_time += 1/frame_rate 
         print(img_path, current_time)
 
         img = cv.imread(img_path, cv.IMREAD_GRAYSCALE)
         events = event_sim.simulate(img, current_time)
+        synthese_count += timer.time() - synthese_start
 
+
+        write_start = timer.time()
         raw = np.zeros((img.shape[0], img.shape[1], 3))
 
-        for evt in events:
-            if evt[3]:
-                raw[int(evt[1]), int(evt[0]), 2] = 255
-            else:
-                raw[int(evt[1]), int(evt[0]), 0] = 255
+        pos = events[:,3] == 1.0
+        y = events[pos][:,0].astype(int)
+        x = events[pos][:,1].astype(int)
+        raw[x, y, 2] = 255
+
+
+        neg = events[:,3] == 0.0
+        y = events[neg][:,0].astype(int)
+        x = events[neg][:,1].astype(int)
+        raw[x, y, 0] = 255
 
         cv.imwrite("{}.png".format(i), raw)
+        write_count += timer.time() - write_start
 
         # if i > 4:
         #     raise
+
+    print(timer.time() - start)
+    print(write_count)
+    print(synthese_count)
