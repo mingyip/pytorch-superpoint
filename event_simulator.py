@@ -73,8 +73,8 @@ class Event_simulator():
         # Init arrays for later calculation
         img_diff = img - self.last_img
         abs_diff = abs(img_diff)
-        update_mask = abs_diff > tolerance
-        poliarity = img_diff >= 0
+        update_mask = abs_diff < tolerance
+        abs_diff[update_mask] = 0
 
 
         # Sample Positive Events
@@ -83,7 +83,7 @@ class Event_simulator():
         time_stepsize_pos = stepsize_pos * delta_t / abs_diff
 
         max_num_steps = int(np.max(np.floor(np.divide(abs_diff, stepsize_pos))))
-        max_num_steps = np.array([i+1 for i in range(max_num_steps)])
+        max_num_steps = np.arange(max_num_steps) + 1
 
         grid_pos = np.multiply(max_num_steps[None,None,:], stepsize_pos[:,:,None])
         time_grid_pos = np.multiply(max_num_steps[None,None,:], time_stepsize_pos[:,:,None])
@@ -104,7 +104,7 @@ class Event_simulator():
         time_stepsize_neg = stepsize_neg * delta_t / abs_diff
 
         max_num_steps = int(np.max(np.floor(np.divide(abs_diff, stepsize_neg))))
-        max_num_steps = np.array([i+1 for i in range(max_num_steps)])
+        max_num_steps = np.arange(max_num_steps) + 1
 
         grid_neg = np.multiply(max_num_steps[None,None,:], stepsize_neg[:,:,None])
         time_grid_neg = np.multiply(max_num_steps[None,None,:], time_stepsize_neg[:,:,None])
