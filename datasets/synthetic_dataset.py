@@ -17,21 +17,39 @@ def set_random_state(state):
     random_state = state
 
 
-def get_random_color(background_color):
+def get_random_color(num=1, background_color=None):
     """ Output a random scalar in grayscale with a least a small
         contrast with the background color """
-    color = random_state.randint(256)
-    if abs(color - background_color) < 30:  # not enough contrast
-        color = (color + 128) % 256
+
+    color = random_state.randint(256, size=num)
+    if background_color is not None:
+        mask = abs(color - background_color) < 30  # not enough contrast
+        color[mask] = (color[mask] + 128) % 256
     return color
 
 
-def get_random_speed():
+def get_random_speed(num=1):
     """ Output a random speed_x speed_y"""
 
-    speed_x = random_state.randint(8, 12) * random_state.choice([1, -1])
-    speed_y = random_state.randint(8, 12) * random_state.choice([1, -1])
-    return np.array(speed_x, speed_y)
+    speed = random_state.randint(8, 12, size=(num,2)) * \
+            random_state.choice([1, -1], size=(num,2))
+    return speed.squeeze()
+
+
+def get_random_position(size, num=1):
+    """ Output random xy position """
+
+    pos = random_state.uniform(0, 1, (num, 2))
+    pos[:,0] *= size[0]
+    pos[:,1] *= size[1]
+
+    return pos.astype(int)
+
+
+def get_random_radius(min_rad=10, max_rad=20, num=1):
+    """ Output random radius """
+    return random_state.randint(min_rad, max_rad, size=(num))
+    
 
 
 def get_random_rotation():
@@ -70,7 +88,7 @@ def add_salt_and_pepper(img):
     cv.blur(img, (5, 5), img)
     return np.empty((0, 2), dtype=np.int)
 
-def background_generator(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
+def background_generator(size=(960, 1280), num_frames=11, nb_blobs=100, min_rad_ratio=0.01,
                         max_rad_ratio=0.05, min_kernel_size=50, max_kernel_size=300):
     """ Generate a customized background image
     Parameters:
@@ -82,37 +100,45 @@ def background_generator(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
       max_kernel_size: maximal size of the kernel
     """
 
-    img = np.zeros(size, dtype=np.uint8)
+
     dim = max(size)
-    cv.randu(img, 0, 255)
+    speed = get_random_speed()
+    canvas_size = size + num_frames * abs(speed)
+
+    # img = np.full(canvas_size, 0.1, dtype=np.uint8)
+    img = np.zeros(canvas_size, dtype=np.uint8)
+    # cv.randu(img, 0, 255)
     cv.threshold(img, random_state.randint(256), 255, cv.THRESH_BINARY, img)
     background_color = int(np.mean(img))
-    blobs = np.concatenate([random_state.randint(0, size[1], size=(nb_blobs, 1)),
-                            random_state.randint(0, size[0], size=(nb_blobs, 1))],
-                           axis=1)
-    colors = [get_random_color(background_color) for _ in range(nb_blobs)]
-    radius = [np.random.randint(int(dim * min_rad_ratio),
-                                int(dim * max_rad_ratio)) for _ in range(nb_blobs)]
-    directions = np.concatenate([random_state.randint(0, 80, size=(nb_blobs, 1))-40,
-                            random_state.randint(0, 80, size=(nb_blobs, 1))-40],
-                           axis=1)
+
+    blobs = get_random_position(canvas_size, nb_blobs)
+    colors = get_random_color(nb_blobs, background_color)
+    radius = get_random_radius(int(dim*min_rad_ratio), int(dim*max_rad_ratio), nb_blobs)
     kernel_size = random_state.randint(min_kernel_size, max_kernel_size)
 
+    [cv.circle(img, (blobs[i,1], blobs[i,0]), radius[i], int(colors[i]), -1) for i in range(nb_blobs)]
+    cv.blur(img, (kernel_size, kernel_size), img)
 
-    t = 0
+    start_y = 0 if speed[0]>=0 else canvas_size[0]-size[0]
+    start_x = 0 if speed[1]>=0 else canvas_size[1]-size[1]
+    start_y = np.array([start_y + i * speed[0] for i in range(num_frames)])
+    start_x = np.array([start_x + i * speed[1] for i in range(num_frames)])
+    end_y = start_y + size[0]
+    end_x = start_x + size[1]
 
 
-    while True:
-        canvas = copy.deepcopy(img)
-        for i in range(nb_blobs):
-            cv.circle(canvas, 
-                    (blobs[i][0] + t*directions[i][0], blobs[i][1] + t*directions[i][1]),
-                    radius[i],
-                    colors[i], -1)
 
-        cv.blur(canvas, (kernel_size, kernel_size), canvas)
-        t += 1
-        yield canvas
+    frames = []
+    for i in range(num_frames):
+
+        sy = start_y[i]
+        sx = start_x[i]
+        ey = end_y[i]
+        ex = end_x[i]
+
+        frames.append(img[sy:ey, sx:ex])
+
+    return np.array(frames)
 
 
 def generate_background(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
@@ -208,23 +234,22 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     """
 
     
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
     num_lines = random_state.randint(1, nb_lines)
     segments = np.empty((0, 4), dtype=np.int)
     min_dim = min(img_size)
     
 
+    print(img_size)
     # Generate lines position and avoid overlapping lines
     for i in range(num_lines):
 
-        x1 = random_state.randint(img_size[1])
-        y1 = random_state.randint(img_size[0])
-        x2 = random_state.randint(img_size[1])
-        y2 = random_state.randint(img_size[0])
+        x1 = random_state.randint(1)
+        y1 = random_state.randint(1)
+        x2 = random_state.randint(320)# * random_state.choice([1, -1])
+        y2 = random_state.randint(240)# * random_state.choice([1, -1])
 
         p1 = np.array([[x1, y1]])
-        p2 = np.array([[x2, y2]]) 
+        p2 = np.array([[x1+x2, y1+y2]]) 
 
         # Check that there is no overlap
         if intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
@@ -234,7 +259,7 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
     rotation = [get_random_rotation() for _ in range(len(segments))]
     speed = [get_random_speed() for _ in range(len(segments))]
-    colors = [get_random_color(background_color) for _ in range(len(segments))]
+    colors = [get_random_color(0) for _ in range(len(segments))]
 
 
     pts_list = []
@@ -242,7 +267,7 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     # Generate frames
     for i in range(num_frames):
 
-        img = next(bg)
+        img = np.zeros(img_size)
         pts = np.empty((0, 2), dtype=np.int)
         for j, line in enumerate(segments):
 
@@ -1051,3 +1076,47 @@ def draw_interest_points(img, points):
     for i in range(points.shape[0]):
         cv.circle(img_rgb, (points[i][0], points[i][1]), 5, (0, 255, 0), -1)
     return img_rgb
+
+
+
+
+if __name__ == "__main__":
+
+    bg_config = {"min_kernel_size": 150,
+                "max_kernel_size": 500,
+                "min_rad_ratio": 0.02,
+                "max_rad_ratio": 0.031,}
+
+
+    # for i in range(100):
+    #     pts_list, img_list = draw_lines((240, 320), 5, bg_config)
+    #     cv.imwrite("{}.png".format(0), img_list[0])
+    #     cv.imwrite("{}.png".format(1), img_list[1])
+    #     cv.imwrite("{}.png".format(2), img_list[2])
+    #     cv.imwrite("{}.png".format(3), img_list[3])
+    #     cv.imwrite("{}.png".format(4), img_list[4])
+    #     break
+
+    # print(pts_list)
+
+
+    for i in range(1):
+        bg = background_generator((240, 320))
+
+        # print(bg.shape)
+        # print(bg[0].shape)
+
+        cv.imwrite("{}.png".format(0), bg[0])
+        cv.imwrite("{}.png".format(1), bg[1])
+        cv.imwrite("{}.png".format(2), bg[2])
+        cv.imwrite("{}.png".format(3), bg[3])
+        cv.imwrite("{}.png".format(4), bg[4])
+        cv.imwrite("{}.png".format(5), bg[5])
+        cv.imwrite("{}.png".format(6), bg[6])
+        cv.imwrite("{}.png".format(7), bg[7])
+        cv.imwrite("{}.png".format(8), bg[8])
+        cv.imwrite("{}.png".format(9), bg[9])
+        cv.imwrite("{}.png".format(10), bg[10])
+
+        # break
+  
