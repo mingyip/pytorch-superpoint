@@ -1,9 +1,14 @@
 
+# import torch
+
+
 import cv2 as cv
 import numpy as np
 import time as timer
 
+
 from pathlib import Path
+# from torch.autograd import Variable
 
 
 
@@ -44,6 +49,18 @@ class Event_simulator():
         self.H, self.W = img.shape
 
 
+        cp = self.config["contrast_threshold_pos"]
+        cm = self.config["contrast_threshold_neg"]
+        sigma_cp = self.config["contrast_threshold_sigma_pos"]
+        sigma_cm = self.config["contrast_threshold_sigma_neg"]
+        minimum_contrast_threshold = 0.01
+
+
+        stepsize_pos = np.full_like(img, cp) + np.random.normal(0, sigma_cp, [self.H, self.W])
+        stepsize_neg = np.full_like(img, cm) + np.random.normal(0, sigma_cm, [self.H, self.W])
+        self.stepsize_pos = np.maximum(minimum_contrast_threshold, stepsize_pos)
+        self.stepsize_neg = np.maximum(minimum_contrast_threshold, stepsize_neg)
+
     def simulate(self, img, time):
 
         assert len(img.shape) == 2, "Event simulator only takes gray images"
@@ -53,12 +70,7 @@ class Event_simulator():
         tolerance = 1e-6
         img = np.array(img)
         H, W = self.H, self.W
-        cp = self.config["contrast_threshold_pos"]
-        cm = self.config["contrast_threshold_neg"] 
-        sigma_cp = self.config["contrast_threshold_sigma_pos"]
-        sigma_cm = self.config["contrast_threshold_sigma_neg"]
-        refractory_period = self.config["refractory_period_ns"]
-        minimum_contrast_threshold = 0.01
+        # refractory_period = self.config["refractory_period_ns"]
         # delta_t = (time - self.current_time)
 
 
@@ -85,24 +97,29 @@ class Event_simulator():
         # Init arrays for later calculation
         img_diff = img - self.last_img
         abs_diff = abs(img_diff)
-        abs_diff[abs_diff < tolerance] = 0
+        img_diff[abs_diff < tolerance] = 0
 
+        pos_diff = abs_diff.copy()
+        neg_diff = abs_diff.copy()
+
+        pos_diff[img_diff<0] = 0
+        neg_diff[img_diff>0] = 0
 
         # Sample Positive Events
-        stepsize_pos = np.full_like(img, cp) + np.random.normal(0, sigma_cp, [self.H, self.W])
-        stepsize_pos = np.maximum(minimum_contrast_threshold, stepsize_pos)
         # time_stepsize_pos = stepsize_pos * delta_t / abs_diff
 
-        max_num_steps = int(np.max(np.floor(np.divide(abs_diff, stepsize_pos))))
-        steps_grid = np.arange(max_num_steps) + 1
+        events_pos = np.floor(np.divide(pos_diff, self.stepsize_pos))
+        max_num_events = np.max(events_pos)
+        # steps_grid = np.arange(max_num_steps) + 1
 
-        grid_pos = np.multiply(steps_grid[None,None,:], stepsize_pos[:,:,None])
+        # grid_pos = np.multiply(steps_grid[None,None,:], stepsize_pos[:,:,None])
         # time_grid_pos = np.multiply(max_num_steps[None,None,:], time_stepsize_pos[:,:,None])
 
-        events_mask = grid_pos + self.last_img[:,:,None] < img[:,:,None]
-        events_pos = events_mask.any(axis=2) * 255
+        # events_mask = grid_pos + self.last_img[:,:,None] < img[:,:,None]
+        # events_pos = events_mask.any(axis=2) * 255
         # events_pos = events_mask.sum(axis=2)
-        # events_pos = events_pos * 255 / max_num_steps
+        # events_pos = events_pos / max_num_events
+        events_pos = events_pos > 0
 
         # indices = np.where(events_mask)
         # timestamp = time + time_grid_pos[events_mask]
@@ -114,20 +131,20 @@ class Event_simulator():
         
        
         # Sample Negative Events
-        stepsize_neg = np.full_like(img, cm) + np.random.normal(0, sigma_cm, [self.H, self.W])
-        stepsize_neg = np.maximum(minimum_contrast_threshold, stepsize_neg)
         # time_stepsize_neg = stepsize_neg * delta_t / abs_diff
 
-        max_num_steps = int(np.max(np.floor(np.divide(abs_diff, stepsize_neg))))
-        steps_grid = np.arange(max_num_steps) + 1
+        events_neg = np.floor(np.divide(neg_diff, self.stepsize_neg))
+        max_num_events = np.max(events_neg)
+        # steps_grid = np.arange(max_num_steps) + 1
 
-        grid_neg = np.multiply(steps_grid[None,None,:], stepsize_neg[:,:,None])
+        # grid_neg = np.multiply(steps_grid[None,None,:], stepsize_neg[:,:,None])
         # time_grid_neg = np.multiply(max_num_steps[None,None,:], time_stepsize_neg[:,:,None])
 
-        events_mask =  self.last_img[:,:,None] - grid_neg > img[:,:,None]
-        events_neg = events_mask.any(axis=2) * 255
+        # events_mask =  self.last_img[:,:,None] - grid_neg > img[:,:,None]
+        # events_neg = events_mask.any(axis=2) * 255
         # events_neg = events_mask.sum(axis=2)
-        # events_neg = events_neg * 255 / max_num_steps
+        # events_neg = events_neg / max_num_events
+        events_neg = events_neg > 0
 
         # indices = np.where(events_mask)
         # timestamp = time + time_grid_neg[events_mask]
@@ -193,8 +210,8 @@ if __name__ == "__main__":
         # x = events[neg][:,1].astype(int)
         # raw[x, y, 0] = 255
 
-        raw[:,:,2] = pos
-        raw[:,:,0] = neg
+        raw[:,:,2] = pos * 255
+        raw[:,:,0] = neg * 255
         cv.imwrite("{}.png".format(i), raw)
         write_count += timer.time() - write_start
 
