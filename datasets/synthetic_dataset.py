@@ -7,7 +7,7 @@ import copy
 
 from pathlib import Path
 from shapely.geometry import Polygon
-
+from datasets import event_simulator as es
 
 random_state = np.random.RandomState(None)
 
@@ -17,21 +17,21 @@ def set_random_state(state):
     random_state = state
 
 
-def get_random_color(num=1, background_color=None):
+def get_random_color(num=1, background_color=0):
     """ Output a random scalar in grayscale with a least a small
         contrast with the background color """
 
     color = random_state.randint(256, size=num)
-    if background_color is not None:
-        mask = abs(color - background_color) < 30  # not enough contrast
-        color[mask] = (color[mask] + 128) % 256
+    mask = abs(color - background_color) < 30  # not enough contrast
+    color[mask] = (color[mask] + 128) % 256
+
     return color
 
 
-def get_random_speed(num=1):
+def get_random_speed(min_speed=4, max_speed=5, num=1):
     """ Output a random speed_x speed_y"""
 
-    speed = random_state.randint(8, 12, size=(num,2)) * \
+    speed = random_state.randint(min_speed, max_speed, size=(num,2)) * \
             random_state.choice([1, -1], size=(num,2))
     return speed.squeeze()
 
@@ -46,18 +46,33 @@ def get_random_position(size, num=1):
     return pos.astype(int)
 
 
+def get_random_thickness(min_thickness=1, max_thickness=3, num=1):
+    """ Output random thickness """
+    return random_state.randint(min_thickness, max_thickness, size=(num))
+
+
 def get_random_radius(min_rad=10, max_rad=20, num=1):
     """ Output random radius """
     return random_state.randint(min_rad, max_rad, size=(num))
-    
 
 
-def get_random_rotation():
+def get_random_length(min_len=20, max_len=100, num=1):
+    """ Output random length """
+    return random_state.randint(min_len, max_len, size=(num, 2)) * \
+            random_state.choice([1, -1], size=(num, 2))
+
+
+def get_random_rotation(min_rotation=1, max_rotation=2, num=1):
     """ Output a Rotation matrix between -5 deg and 5 deg"""
-    uni = random_state.uniform(5, 8) * random_state.choice([1, -1])
+
+    uni = random_state.uniform(min_rotation, max_rotation, num) * \
+            random_state.choice([1, -1], num)
+
     theta = np.radians(uni)
     c, s = np.cos(theta), np.sin(theta)
     R = np.array(((c,-s), (s, c)))
+    R = np.transpose(R, (2, 0, 1))
+
     return R
 
 
@@ -77,6 +92,14 @@ def get_different_color(previous_colors, min_dist=50, max_count=20):
     return color
 
 
+def calculate_rigid_transformation(pts, center, speed, rotation):
+    """ Output new Position of transformation """
+    pts_rotation = [np.matmul(pts[i] - center[i], rotation[i]) for i in range(len(pts))] + center
+    pts_translation = pts_rotation + speed
+
+    return np.array(pts_translation)
+
+
 def add_salt_and_pepper(img):
     """ Add salt and pepper noise to an image """
     noise = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
@@ -88,7 +111,7 @@ def add_salt_and_pepper(img):
     cv.blur(img, (5, 5), img)
     return np.empty((0, 2), dtype=np.int)
 
-def background_generator(size=(960, 1280), num_frames=11, nb_blobs=100, min_rad_ratio=0.01,
+def generate_background(size=(960, 1280), num_frames=11, nb_blobs=100, min_rad_ratio=0.01,
                         max_rad_ratio=0.05, min_kernel_size=50, max_kernel_size=300):
     """ Generate a customized background image
     Parameters:
@@ -100,12 +123,10 @@ def background_generator(size=(960, 1280), num_frames=11, nb_blobs=100, min_rad_
       max_kernel_size: maximal size of the kernel
     """
 
-
     dim = max(size)
     speed = get_random_speed()
     canvas_size = size + num_frames * abs(speed)
 
-    # img = np.full(canvas_size, 0.1, dtype=np.uint8)
     img = np.zeros(canvas_size, dtype=np.uint8)
     # cv.randu(img, 0, 255)
     cv.threshold(img, random_state.randint(256), 255, cv.THRESH_BINARY, img)
@@ -126,71 +147,8 @@ def background_generator(size=(960, 1280), num_frames=11, nb_blobs=100, min_rad_
     end_y = start_y + size[0]
     end_x = start_x + size[1]
 
-
-
-    frames = []
-    for i in range(num_frames):
-
-        sy = start_y[i]
-        sx = start_x[i]
-        ey = end_y[i]
-        ex = end_x[i]
-
-        frames.append(img[sy:ey, sx:ex])
-
-    return np.array(frames)
-
-
-def generate_background(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
-                        max_rad_ratio=0.05, min_kernel_size=50, max_kernel_size=300):
-    """ Generate a customized background image
-    Parameters:
-      size: size of the image
-      nb_blobs: number of circles to draw
-      min_rad_ratio: the radius of blobs is at least min_rad_size * max(size)
-      max_rad_ratio: the radius of blobs is at most max_rad_size * max(size)
-      min_kernel_size: minimal size of the kernel
-      max_kernel_size: maximal size of the kernel
-    """
-    img = np.zeros(size, dtype=np.uint8)
-    dim = max(size)
-    cv.randu(img, 0, 255)
-    cv.threshold(img, random_state.randint(256), 255, cv.THRESH_BINARY, img)
-    background_color = int(np.mean(img))
-    blobs = np.concatenate([random_state.randint(0, size[1], size=(nb_blobs, 1)),
-                            random_state.randint(0, size[0], size=(nb_blobs, 1))],
-                           axis=1)
-    for i in range(nb_blobs):
-        col = get_random_color(background_color)
-        cv.circle(img, (blobs[i][0], blobs[i][1]),
-                  np.random.randint(int(dim * min_rad_ratio),
-                                    int(dim * max_rad_ratio)),
-                  col, -1)
-    kernel_size = random_state.randint(min_kernel_size, max_kernel_size)
-    cv.blur(img, (kernel_size, kernel_size), img)
-    return img
-
-
-def generate_custom_background(size, background_color, nb_blobs=3000,
-                               kernel_boundaries=(50, 100)):
-    """ Generate a customized background to fill the shapes
-    Parameters:
-      background_color: average color of the background image
-      nb_blobs: number of circles to draw
-      kernel_boundaries: interval of the possible sizes of the kernel
-    """
-    img = np.zeros(size, dtype=np.uint8)
-    img = img + get_random_color(background_color)
-    blobs = np.concatenate([np.random.randint(0, size[1], size=(nb_blobs, 1)),
-                            np.random.randint(0, size[0], size=(nb_blobs, 1))],
-                           axis=1)
-    for i in range(nb_blobs):
-        col = get_random_color(background_color)
-        cv.circle(img, (blobs[i][0], blobs[i][1]),
-                  np.random.randint(20), col, -1)
-    kernel_size = np.random.randint(kernel_boundaries[0], kernel_boundaries[1])
-    cv.blur(img, (kernel_size, kernel_size), img)
-    return img
+    frames = np.array([img[start_y[i]:end_y[i], start_x[i]:end_x[i]] for i in range(num_frames)])
+    return frames
 
 
 def final_blur(img, kernel_size=(5, 5)):
@@ -201,22 +159,33 @@ def final_blur(img, kernel_size=(5, 5)):
     cv.GaussianBlur(img, kernel_size, 0, img)
 
 
-def ccw(A, B, C, dim):
+def ccw(A, B, C):
     """ Check if the points are listed in counter-clockwise order """
-    if dim == 2:  # only 2 dimensions
-        return((C[:, 1] - A[:, 1]) * (B[:, 0] - A[:, 0])
-               > (B[:, 1] - A[:, 1]) * (C[:, 0] - A[:, 0]))
-    else:  # dim should be equal to 3
-        return((C[:, 1, :] - A[:, 1, :])
-               * (B[:, 0, :] - A[:, 0, :])
-               > (B[:, 1, :] - A[:, 1, :])
-               * (C[:, 0, :] - A[:, 0, :]))
+    return((C[:, 1] - A[:, 1]) * (B[:, 0] - A[:, 0])
+            > (B[:, 1] - A[:, 1]) * (C[:, 0] - A[:, 0]))
 
 
-def intersect(A, B, C, D, dim):
+def intersect(A, B, C, D):
     """ Return true if line segments AB and CD intersect """
-    return np.any((ccw(A, C, D, dim) != ccw(B, C, D, dim)) &
-                  (ccw(A, B, C, dim) != ccw(A, B, D, dim)))
+    return np.any((ccw(A, C, D) != ccw(B, C, D)) &
+                  (ccw(A, B, C) != ccw(A, B, D)))
+
+# def ccw(A, B, C, dim):
+#     """ Check if the points are listed in counter-clockwise order """
+#     if dim == 2:  # only 2 dimensions
+#         return((C[:, 1] - A[:, 1]) * (B[:, 0] - A[:, 0])
+#                > (B[:, 1] - A[:, 1]) * (C[:, 0] - A[:, 0]))
+#     else:  # dim should be equal to 3
+#         return((C[:, 1, :] - A[:, 1, :])
+#                * (B[:, 0, :] - A[:, 0, :])
+#                > (B[:, 1, :] - A[:, 1, :])
+#                * (C[:, 0, :] - A[:, 0, :]))
+
+
+# def intersect(A, B, C, D, dim):
+#     """ Return true if line segments AB and CD intersect """
+#     return np.any((ccw(A, C, D, dim) != ccw(B, C, D, dim)) &
+#                   (ccw(A, B, C, dim) != ccw(A, B, D, dim)))
 
 
 def keep_points_inside(points, size):
@@ -227,82 +196,224 @@ def keep_points_inside(points, size):
     return points[mask, :]
 
 
+def  get_next_position(points, center, speed, rotation):
+
+
+    new_p = [np.matmul(points[i] - center[i], rotation[i]) for i in range(num_lines)]
+    new_p = np.array(new_p + center + speed, dtype=int)
+
+
 def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     """ Draw random lines and output the positions of the endpoints
     Parameters:
       nb_lines: maximal number of lines
     """
 
+    images = generate_background(img_size, num_frames=num_frames)
     
     num_lines = random_state.randint(1, nb_lines)
-    segments = np.empty((0, 4), dtype=np.int)
-    min_dim = min(img_size)
-    
-
-    print(img_size)
-    # Generate lines position and avoid overlapping lines
-    for i in range(num_lines):
-
-        x1 = random_state.randint(1)
-        y1 = random_state.randint(1)
-        x2 = random_state.randint(320)# * random_state.choice([1, -1])
-        y2 = random_state.randint(240)# * random_state.choice([1, -1])
-
-        p1 = np.array([[x1, y1]])
-        p2 = np.array([[x1+x2, y1+y2]]) 
-
-        # Check that there is no overlap
-        if intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
-            continue
-        segments = np.concatenate([segments, np.array([[x1, y1, x2, y2]])], axis=0)
-
-    thickness = [random_state.randint(min_dim * 0.01, min_dim * 0.02) for _ in range(len(segments))]
-    rotation = [get_random_rotation() for _ in range(len(segments))]
-    speed = [get_random_speed() for _ in range(len(segments))]
-    colors = [get_random_color(0) for _ in range(len(segments))]
+    p1 = get_random_position(img_size, num_lines)
+    p2 = p1 + get_random_length(num=num_lines)
+    out_p1 = p1[np.newaxis, :, :]
+    out_p2 = p2[np.newaxis, :, :]
 
 
-    pts_list = []
-    img_list = []
-    # Generate frames
+    # Generate Speed and Rotation for animation
+    thickness = get_random_thickness(num=num_lines)
+    rotation = get_random_rotation(num=num_lines)
+    speed = get_random_speed(num=num_lines)
+    colors = get_random_color(num=num_lines, background_color=0) # TODO: update the background color
+
+
+    # Generate Frames and Remove collided lines
     for i in range(num_frames):
 
-        img = np.zeros(img_size)
-        pts = np.empty((0, 2), dtype=np.int)
-        for j, line in enumerate(segments):
+        center = (out_p1[i] + out_p2[i]) / 2
+        p1 = calculate_rigid_transformation(out_p1[i], center, speed, rotation)
+        p2 = calculate_rigid_transformation(out_p2[i], center, speed, rotation)
+        
 
-            center = np.average(line.reshape(2, 2), axis=0)
-            new_line = (np.matmul(line.reshape(2, 2) - center, rotation[j]) + center + i*speed[j]).astype(int)
-            x1, y1 = new_line[0, 0], new_line[0, 1]
-            x2, y2 = new_line[1, 0], new_line[1, 1]
+        valid_idx = [0]
+        for j in range(1, num_lines):
+            if not intersect(p1[valid_idx], p2[valid_idx], np.array([p1[j]]), np.array([p2[j]])):
+                valid_idx.append(j)
+        
 
-            # Check that there is no overlap
-            new_seg = segments[np.arange(len(segments))!=j]
-            if intersect(new_seg[:, 0:2], new_seg[:, 2:4], np.array([[x1, y1]]), np.array([[x2, y2]]), 2):
-                x1, y1 = line[0], line[1]
-                x2, y2 = line[2], line[3]
-                isMoving = False
-            else:
-                segments[j] = new_line.reshape(-1)
-                isMoving = True
+        out_p1 = np.vstack((out_p1[:,valid_idx,:], p1[np.newaxis,valid_idx,:]))
+        out_p2 = np.vstack((out_p2[:,valid_idx,:], p2[np.newaxis,valid_idx,:]))
+        speed = speed[valid_idx]
+        rotation = rotation[valid_idx]
+        num_lines = len(valid_idx)
 
-            # Make the lines shorter to prevent overlapping due to the thickness of the lines
-            x1_pad = (x1 + 3 / thickness[j] * (x2-x1)).astype(int)
-            x2_pad = (x2 + 3 / thickness[j] * (x1-x2)).astype(int)
-            y1_pad = (y1 + 3 / thickness[j] * (y2-y1)).astype(int)
-            y2_pad = (y2 + 3 / thickness[j] * (y1-y2)).astype(int)
-            cv.line(img, (x1_pad, y1_pad), (x2_pad, y2_pad), colors[j], thickness[j])
+    out_p1 = out_p1.astype(int)
+    out_p2 = out_p2.astype(int)
 
-            if isMoving:
-                pts = np.concatenate([pts, keep_points_inside(np.array([[x1_pad, y1_pad], [x2_pad, y2_pad]]), img_size)], axis=0)
 
-        pts_list.append(pts)
-        img_list.append(img)
+    # Draw lines on background images
+    for i in range(num_frames):
+        for j in range(num_lines):
+            cv.line(images[i], tuple(out_p1[i,j]), tuple(out_p2[i,j]), int(colors[j]), thickness[j])
+    
+    p1 = keep_points_inside(p1, img_size)
+    p2 = keep_points_inside(p2, img_size)
+    points = np.concatenate((p1, p2))
 
-        if len(pts) == 0:
-            return draw_lines(img_size, num_frames, bg_config, nb_lines)
+    event_sim = es.Event_simulator(images[0], 0)
+    events = np.array([event_sim.simulate(img, 0) for img in images])
 
-    return np.array(pts_list), np.array(img_list)
+
+    raw = np.zeros((img_size[0], img_size[1], 3))
+    for k, (pos, neg) in enumerate(events):
+        raw[:,:,2] = pos * 255
+        raw[:,:,0] = neg * 255
+        cv.imwrite("{}.png".format(k), raw)
+
+    # print(events.shape)
+    # pos = events[:,0,:,:]
+    # neg = events[:,1,:,:]
+    # print(pos.shape)
+    # print(neg.shape)
+
+    # raw = np.zeros((pos.shape[1], pos.shape[2], 3))
+    # for i in range(len(pos)):
+    #     raw[:,:,2] = pos[i]
+    #     raw[:,:,0] = neg[i]
+    #     cv.imwrite("{}.png".format(i), raw)  
+
+    # print(num_lines)
+    # raise
+
+    # # img = np.zeros(img_size)
+    # # for i in range(num_lines):
+    # #     cv.line(img, tuple(p1[i]), tuple(p2[i]), int(colors[i]), thickness[i])
+    # # cv.imwrite("{}.png".format(0), img)
+
+
+    # # Remove lines intersected with others
+    # valid_idx = [0]   
+    # for i in range(1, num_lines):
+    #     if not intersect(p1[valid_idx], p2[valid_idx], np.array([p1[i]]), np.array([p2[i]]), 2):
+    #         valid_idx.append(i)
+
+    # print(len(p1))
+    # p1 = p1[valid_idx]
+    # p2 = p2[valid_idx]
+    # num_lines = len(p1)
+    # print(len(p1))
+
+
+
+    # # img = np.zeros(img_size)
+    # # for i in range(num_lines):
+    # #     cv.line(img, tuple(p1[i]), tuple(p2[i]), int(colors[i]), thickness[i])
+    # # cv.imwrite("{}.png".format(1), img)
+
+
+    # for i in range(num_frames):
+
+    #     center = (p1 + p2) / 2
+
+
+    #     r1 = [np.matmul(p1[i] - center[i], rotation[i]) for i in range(num_lines)]
+    #     r2 = [np.matmul(p2[i] - center[i], rotation[i]) for i in range(num_lines)]
+    #     new_p1 = np.array(r1 + center + speed, dtype=int)
+    #     new_p2 = np.array(r2 + center + speed, dtype=int)
+    #     new_p1 = np.concatenate((p1, new_p1))
+    #     new_p2 = np.concatenate((p2, new_p2))
+
+
+    #     for j in range(num_lines):
+
+
+    #         curr_p1 = np.array([new_p1[j+num_lines]])
+    #         curr_p2 = np.array([new_p2[j+num_lines]])
+
+    #         if intersect(new_p1[j:j+num_lines], new_p2[j:j+num_lines], curr_p1, curr_p2, 2):
+    #             new_p1[j+num_lines] = p1[j]
+    #             new_p2[j+num_lines] = p2[j]
+
+
+    #     p1 = new_p1[num_lines:]
+    #     p2 = new_p2[num_lines:]
+
+    #     # print(len(p1), len(p2))
+
+
+    #     img = np.zeros(img_size)
+    #     for j in range(num_lines):
+    #         cv.line(img, tuple(p1[j]), tuple(p2[j]), int(colors[j]), thickness[j])
+    #     cv.imwrite("{}.png".format(i), img)   
+
+
+
+    
+    # raise
+
+
+    # # print(img_size)
+    # # Generate lines position and avoid overlapping lines
+    # for i in range(num_lines):
+
+    #     x1 = random_state.randint(1)
+    #     y1 = random_state.randint(1)
+    #     x2 = random_state.randint(320)# * random_state.choice([1, -1])
+    #     y2 = random_state.randint(240)# * random_state.choice([1, -1])
+
+    #     p1 = np.array([[x1, y1]])
+    #     p2 = np.array([[x1+x2, y1+y2]]) 
+
+    #     # Check that there is no overlap
+    #     if intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
+    #         continue
+    #     segments = np.concatenate([segments, np.array([[x1, y1, x2, y2]])], axis=0)
+
+    # thickness = [random_state.randint(min_dim * 0.005, min_dim * 0.01) for _ in range(len(segments))]
+    # rotation = [get_random_rotation() for _ in range(len(segments))]
+    # speed = [get_random_speed() for _ in range(len(segments))]
+    # colors = [get_random_color(0) for _ in range(len(segments))]
+
+
+    # pts_list = []
+    # img_list = []
+    # # Generate frames
+    # for i in range(num_frames):
+
+    #     img = np.zeros(img_size)
+    #     pts = np.empty((0, 2), dtype=np.int)
+    #     for j, line in enumerate(segments):
+
+    #         center = np.average(line.reshape(2, 2), axis=0)
+    #         new_line = (np.matmul(line.reshape(2, 2) - center, rotation[j]) + center + i*speed[j]).astype(int)
+    #         x1, y1 = new_line[0, 0], new_line[0, 1]
+    #         x2, y2 = new_line[1, 0], new_line[1, 1]
+
+    #         # Check that there is no overlap
+    #         new_seg = segments[np.arange(len(segments))!=j]
+    #         if intersect(new_seg[:, 0:2], new_seg[:, 2:4], np.array([[x1, y1]]), np.array([[x2, y2]]), 2):
+    #             x1, y1 = line[0], line[1]
+    #             x2, y2 = line[2], line[3]
+    #             isMoving = False
+    #         else:
+    #             segments[j] = new_line.reshape(-1)
+    #             isMoving = True
+
+    #         # Make the lines shorter to prevent overlapping due to the thickness of the lines
+    #         x1_pad = (x1 + 3 / thickness[j] * (x2-x1)).astype(int)
+    #         x2_pad = (x2 + 3 / thickness[j] * (x1-x2)).astype(int)
+    #         y1_pad = (y1 + 3 / thickness[j] * (y2-y1)).astype(int)
+    #         y2_pad = (y2 + 3 / thickness[j] * (y1-y2)).astype(int)
+    #         cv.line(img, (x1_pad, y1_pad), (x2_pad, y2_pad), colors[j], thickness[j])
+
+    #         if isMoving:
+    #             pts = np.concatenate([pts, keep_points_inside(np.array([[x1_pad, y1_pad], [x2_pad, y2_pad]]), img_size)], axis=0)
+
+    #     pts_list.append(pts)
+    #     img_list.append(img)
+
+    #     if len(pts) == 0:
+    #         return draw_lines(img_size, num_frames, bg_config, nb_lines)
+
+    # return np.array(pts_list), np.array(img_list)
 
 
 def draw_polygon(img_size, num_frames, bg_config, max_sides=8):
@@ -1088,8 +1199,8 @@ if __name__ == "__main__":
                 "max_rad_ratio": 0.031,}
 
 
-    # for i in range(100):
-    #     pts_list, img_list = draw_lines((240, 320), 5, bg_config)
+    for i in range(1):
+        draw_lines((240, 320), 20, bg_config)
     #     cv.imwrite("{}.png".format(0), img_list[0])
     #     cv.imwrite("{}.png".format(1), img_list[1])
     #     cv.imwrite("{}.png".format(2), img_list[2])
@@ -1100,23 +1211,23 @@ if __name__ == "__main__":
     # print(pts_list)
 
 
-    for i in range(1):
-        bg = background_generator((240, 320))
+    # for i in range(100000):
+    #     bg = generate_background((240, 320))
 
         # print(bg.shape)
         # print(bg[0].shape)
 
-        cv.imwrite("{}.png".format(0), bg[0])
-        cv.imwrite("{}.png".format(1), bg[1])
-        cv.imwrite("{}.png".format(2), bg[2])
-        cv.imwrite("{}.png".format(3), bg[3])
-        cv.imwrite("{}.png".format(4), bg[4])
-        cv.imwrite("{}.png".format(5), bg[5])
-        cv.imwrite("{}.png".format(6), bg[6])
-        cv.imwrite("{}.png".format(7), bg[7])
-        cv.imwrite("{}.png".format(8), bg[8])
-        cv.imwrite("{}.png".format(9), bg[9])
-        cv.imwrite("{}.png".format(10), bg[10])
+        # cv.imwrite("{}.png".format(0), bg[0])
+        # cv.imwrite("{}.png".format(1), bg[1])
+        # cv.imwrite("{}.png".format(2), bg[2])
+        # cv.imwrite("{}.png".format(3), bg[3])
+        # cv.imwrite("{}.png".format(4), bg[4])
+        # cv.imwrite("{}.png".format(5), bg[5])
+        # cv.imwrite("{}.png".format(6), bg[6])
+        # cv.imwrite("{}.png".format(7), bg[7])
+        # cv.imwrite("{}.png".format(8), bg[8])
+        # cv.imwrite("{}.png".format(9), bg[9])
+        # cv.imwrite("{}.png".format(10), bg[10])
 
         # break
   
