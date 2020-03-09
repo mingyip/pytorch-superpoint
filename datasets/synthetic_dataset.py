@@ -96,7 +96,7 @@ def get_different_color(previous_colors, min_dist=50, max_count=20):
 
 def calculate_rigid_transformation_batch(pts, center, speed, rotation):
     """ Output new Position of transformation """
-    pts_rotation = [np.matmul(pts[i] - center[i], rotation[i]) for i in range(len(pts))] + center
+    pts_rotation = [np.matmul(pts[i] - center, rotation) for i in range(len(pts))] + center
     pts_translation = pts_rotation + speed
 
     return np.array(pts_translation)
@@ -237,8 +237,8 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     for i in range(num_frames):
 
         center = (out_p1[i] + out_p2[i]) / 2
-        p1 = calculate_rigid_transformation_batch(out_p1[i], center, speed, rotation)
-        p2 = calculate_rigid_transformation_batch(out_p2[i], center, speed, rotation)
+        p1 = [np.matmul(out_p1[i] - center[i], rotation[i]) for i in range(len(pts))] + center + speed
+        p2 = [np.matmul(out_p2[i] - center[i], rotation[i]) for i in range(len(pts))] + center + speed
         
 
         valid_idx = [0]
@@ -265,26 +265,17 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
 
     return images, points, events
 
+    
 
-def draw_polygon(img_size, num_frames, bg_config, max_sides=8):
-    """ Draw a polygon with a random number of corners
-    and return the corner points
-    Parameters:
-      max_sides: maximal number of sides + 1
-    """
 
-    images = generate_background(img_size, num_frames=num_frames)
-    background_color = int(np.mean(images))
-
-    num_corners = random_state.randint(3, max_sides)
+def generate_polygons(img_size, max_sides=8):
+    
     min_dim = min(img_size[0], img_size[1])
-    rad = max(random_state.rand() * min_dim / 2, min_dim / 4)
-    cx = random_state.randint(rad, img_size[1] - rad)  # Center of a circle
-    cy = random_state.randint(rad, img_size[0] - rad)
-    color = get_random_color(background_color=background_color)
-    rotation = get_random_rotation()
-    speed = get_random_speed()
+    num_corners = random_state.randint(3, max_sides)
+    rad = np.maximum(random_state.rand() * min_dim / 2, min_dim / 4)
 
+    cx = random_state.randint(rad, img_size[1] - rad) # Center of a circle
+    cy = random_state.randint(rad, img_size[0] - rad)
 
 
     # Sample num_corners pooints inside the circle
@@ -296,23 +287,38 @@ def draw_polygon(img_size, num_frames, bg_config, max_sides=8):
     points = np.dstack([x, y]).squeeze()
 
 
-
     # Filter the points that are too close or that have an angle too flat
     p_minus = np.roll(points, -1, axis=0)
     norms = np.linalg.norm(p_minus - points, axis=1) # short distance
     points = points[norms > 10]
-
 
     p_minus = np.roll(points, -1, axis=0)
     p_plus = np.roll(points, 1, axis=0)
     corner_angles = angle_between_vectors(p_minus - points,  p_plus-points) # acute angles
     points = (points[corner_angles < (2 * math.pi / 3)])
     points = points.squeeze()
-    # num_corners = points.shape[0]
+
+    return points
+
+def draw_polygon(img_size, num_frames, bg_config, max_sides=8):
+    """ Draw a polygon with a random number of corners
+    and return the corner points
+    Parameters:
+      max_sides: maximal number of sides + 1
+    """
+
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
+    points = generate_polygons(img_size)
+    num_lines = len(points)
 
 
+    # Generate Speed and Rotation for animation
+    rotation = get_random_rotation()
+    speed = get_random_speed()
+    color = get_random_color(background_color=background_color)
 
-    
+
     # Generate animated scences 
     frame_points = []
     for i, image in enumerate(images):
@@ -353,13 +359,75 @@ def angle_between_vectors(v1, v2):
     return np.arccos(np.clip(v_dot, -1.0, 1.0))
 
 
-def draw_multiple_polygons(img_size, num_frames, bg_config, max_sides=8, nb_polygons=30, **extra):
+def draw_multiple_polygons(img_size, num_frames, bg_config, max_sides=8, nb_polygons=15, **extra):
     """ Draw multiple polygons with a random number of corners
     and return the corner points
     Parameters:
       max_sides: maximal number of sides + 1
       nb_polygons: maximal number of polygons
     """
+
+
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
+    polygons = [generate_polygons(img_size) for _ in range(nb_polygons)]
+
+
+    # Generate Speed and Rotation for animation
+    rotation = get_random_rotation(num=nb_polygons)
+    speed = get_random_speed(num=nb_polygons)
+    color = get_random_color(num=nb_polygons, background_color=background_color)
+
+
+    # Generate Frames and Remove collided lines
+    for i in range(num_frames):
+
+        for j, poly in enumerate(polygons):
+            center = np.average(poly, axis=0)
+            poly = calculate_rigid_transformaion_batch(poly, center, speed[j], rotation[j])
+
+
+        valid_idx = [0]
+        for j, poly in enumerate(polygons):
+            if not 
+
+
+        for j, shp in enumerate(shapes):
+
+            temp_shp = (np.matmul(shp - centers[j], rotation[j]) + centers[j] + speed[j]).astype(int)
+            new_center = centers[j] + speed[j]
+
+            # Check that the polygon will not overlap with pre-existing shapes
+            temp_polygons = polygons[np.arange(len(polygons))!=j]
+            poly = Polygon(temp_shp)
+            is_collision = np.array([poly.intersects(p) for p in temp_polygons])
+
+            if not is_collision.any():
+                shapes[j] = temp_shp
+                centers[j] = new_center
+                # We skip static shapes and do not count their corners
+                pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
+
+            corners = shp.reshape((-1, 1, 2))
+            cv.fillPoly(img, [corners], colors[j])
+        raise
+        # center = (out_p1[i] + out_p2[i]) / 2
+        # p1 = calculate_rigid_transformation_batch(out_p1[i], center, speed, rotation)
+        # p2 = calculate_rigid_transformation_batch(out_p2[i], center, speed, rotation)
+        
+
+        # valid_idx = [0]
+        # for j in range(1, num_lines):
+        #     if not intersect(p1[valid_idx], p2[valid_idx], np.array([p1[j]]), np.array([p2[j]])):
+        #         valid_idx.append(j)
+
+        # out_p1 = np.vstack((out_p1[:,valid_idx,:], p1[np.newaxis,valid_idx,:]))
+        # out_p2 = np.vstack((out_p2[:,valid_idx,:], p2[np.newaxis,valid_idx,:]))
+        # speed = speed[valid_idx]
+        # rotation = rotation[valid_idx]
+        # num_lines = len(valid_idx)
+
+    raise
 
     bg = background_generator(img_size, **bg_config)
     background_color = int(np.mean(next(bg)))
@@ -1051,8 +1119,10 @@ if __name__ == "__main__":
 
     for i in range(2):
 
+        # generate_polygons(img_size)
         # imgs, pnts, evts = draw_lines(img_size, 20, bg_config)
         imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
+        imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
 
         # print(pnts.shape)
         # print(imgs.shape)
@@ -1060,21 +1130,21 @@ if __name__ == "__main__":
 
         # raise
 
-        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        # for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
         
-            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
-            raw = np.zeros((240, 320, 3))
-            raw[:,:,0] = evt[0] * 255
-            raw[:,:,2] = evt[1] * 255
+        #     img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+        #     raw = np.zeros((240, 320, 3))
+        #     raw[:,:,0] = evt[0] * 255
+        #     raw[:,:,2] = evt[1] * 255
 
-            for pt in pts:
-                p1 = int(pt[0])
-                p2 = int(pt[1])
-                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
-                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+        #     for pt in pts:
+        #         p1 = int(pt[0])
+        #         p2 = int(pt[1])
+        #         cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+        #         cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
 
-            cv.imwrite("img_{}.png".format(j), img)
-            cv.imwrite("evt_{}.png".format(j), raw)
+        #     cv.imwrite("img_{}.png".format(j), img)
+        #     cv.imwrite("evt_{}.png".format(j), raw)
 
 
 
