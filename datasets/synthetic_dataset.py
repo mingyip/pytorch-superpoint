@@ -94,16 +94,24 @@ def get_different_color(previous_colors, min_dist=50, max_count=20):
     return color
 
 
-def calculate_rigid_transformation_batch(pts, center, speed, rotation):
+def calculate_rigid_transformation_batch_lines(pts, center, speed, rotation):
     """ Output new Position of transformation """
-    pts_rotation = [np.matmul(pts[i] - center, rotation) for i in range(len(pts))] + center
+    pts_rotation = [np.matmul(pts[i] - center[i], rotation[i]) for i in range(len(pts))] + center
     pts_translation = pts_rotation + speed
 
     return np.array(pts_translation)
 
+
+def calculate_rigid_transformation_batch(pts, center, speed, rotation):
+    """ Output new Position of transformation """
+    pts_rotation = [np.matmul(pts[i] - center, rotation) for i in range(len(pts))] + center
+    pts_translation = pts_rotation + speed
+    pts = np.array(pts_translation)
+
+    return pts
+
 def calculate_rigid_transformation(pts, center, speed, rotation):
     """ Output new Position of transformation """
-    # print(speed)
     return np.matmul(pts - center, rotation) + center + speed
 
 
@@ -237,8 +245,8 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     for i in range(num_frames):
 
         center = (out_p1[i] + out_p2[i]) / 2
-        p1 = [np.matmul(out_p1[i] - center[i], rotation[i]) for i in range(len(pts))] + center + speed
-        p2 = [np.matmul(out_p2[i] - center[i], rotation[i]) for i in range(len(pts))] + center + speed
+        p1 = calculate_rigid_transformation_batch_lines(out_p1[i], center, speed, rotation)
+        p2 = calculate_rigid_transformation_batch_lines(out_p2[i], center, speed, rotation)
         
 
         valid_idx = [0]
@@ -268,11 +276,11 @@ def draw_lines(img_size, num_frames, bg_config, nb_lines=10):
     
 
 
-def generate_polygons(img_size, max_sides=8):
+def generate_polygons(img_size, max_rad_ratio=0.25, max_sides=8):
     
     min_dim = min(img_size[0], img_size[1])
     num_corners = random_state.randint(3, max_sides)
-    rad = np.maximum(random_state.rand() * min_dim / 2, min_dim / 4)
+    rad = np.maximum(random_state.rand()*min_dim/2, min_dim*max_rad_ratio)
 
     cx = random_state.randint(rad, img_size[1] - rad) # Center of a circle
     cy = random_state.randint(rad, img_size[0] - rad)
@@ -281,7 +289,7 @@ def generate_polygons(img_size, max_sides=8):
     # Sample num_corners pooints inside the circle
     slices = np.linspace(0, 2 * np.pi, num_corners + 1)
     angles = slices[:-1] + random_state.rand(num_corners) * (slices[1:] - slices[:-1])
-        
+
     x = cx + 0.8 * rad * np.cos(angles)
     y = cy + 0.8 * rad * np.sin(angles)
     points = np.dstack([x, y]).squeeze()
@@ -297,6 +305,9 @@ def generate_polygons(img_size, max_sides=8):
     corner_angles = angle_between_vectors(p_minus - points,  p_plus-points) # acute angles
     points = (points[corner_angles < (2 * math.pi / 3)])
     points = points.squeeze()
+
+    if len(points) < 3:
+        return generate_polygons(img_size, max_rad_ratio, max_sides)
 
     return points
 
@@ -370,7 +381,7 @@ def draw_multiple_polygons(img_size, num_frames, bg_config, max_sides=8, nb_poly
 
     images = generate_background(img_size, num_frames=num_frames)
     background_color = int(np.mean(images))
-    polygons = [generate_polygons(img_size) for _ in range(nb_polygons)]
+    polygons = np.array([generate_polygons(img_size, max_rad_ratio=0.1) for _ in range(nb_polygons)])
 
 
     # Generate Speed and Rotation for animation
@@ -379,153 +390,79 @@ def draw_multiple_polygons(img_size, num_frames, bg_config, max_sides=8, nb_poly
     color = get_random_color(num=nb_polygons, background_color=background_color)
 
 
+    
+    valid_idx = np.arange(nb_polygons)
+
     # Generate Frames and Remove collided lines
+    polygon_shape = np.array([Polygon(poly) for poly in polygons])
+    polygons_stack = np.array([polygon_shape    ])
     for i in range(num_frames):
 
-        for j, poly in enumerate(polygons):
-            center = np.average(poly, axis=0)
-            poly = calculate_rigid_transformaion_batch(poly, center, speed[j], rotation[j])
+
+        for j, poly in enumerate(polygon_shape):
+            points = poly.exterior.coords
+            center = np.average(points, axis=0)
+            polygon_shape[j] = Polygon(calculate_rigid_transformation_batch(points, center, speed[j], rotation[j]))
 
 
         valid_idx = [0]
+        for j, poly in enumerate(polygon_shape[1:]):
+
+
+            is_collision = False
+            for idx in valid_idx:
+
+                if poly.intersects(polygon_shape[idx]):
+                    is_collision = True
+                    break
+
+            if not is_collision:
+                valid_idx.append(j+1)
+
+
+        # print(polygon_shape.shape)
+        polygon_shape = polygon_shape[valid_idx]
+        polygons_stack = polygons_stack[:, valid_idx]
+
+        # print(polygons.shape, polygons_stack.shape)
+        polygons_stack = np.vstack((polygons_stack, polygon_shape))
+        rotation = rotation[valid_idx]
+        speed = speed[valid_idx]
+
+
+
+
+    # Get Points, Images, Events
+    frame_points_stack = []
+
+    # print()
+    # print(polygons_stack)
+    for i, img in enumerate(images):
+
+
+        polygons = polygons_stack[i]
+        # print(polygons.shape)
+        frame_points = np.empty((0, 2), dtype=np.int)
         for j, poly in enumerate(polygons):
-            if not 
+            x, y = poly.exterior.coords.xy
+
+            points = np.dstack((x, y)).squeeze()
+            corners = points.reshape((-1, 1, 2)).astype(int)
+            cv.fillPoly(img, [corners], int(color[j]))
+            frame_points = np.concatenate((frame_points, corners.squeeze()))
+
+        frame_points_stack.append(frame_points)
 
 
-        for j, shp in enumerate(shapes):
+    points = np.array(frame_points_stack)
+    event_sim = es.Event_simulator(images[0], 0)
+    events = np.array([event_sim.simulate(img, 0) for img in images[1:]])
 
-            temp_shp = (np.matmul(shp - centers[j], rotation[j]) + centers[j] + speed[j]).astype(int)
-            new_center = centers[j] + speed[j]
-
-            # Check that the polygon will not overlap with pre-existing shapes
-            temp_polygons = polygons[np.arange(len(polygons))!=j]
-            poly = Polygon(temp_shp)
-            is_collision = np.array([poly.intersects(p) for p in temp_polygons])
-
-            if not is_collision.any():
-                shapes[j] = temp_shp
-                centers[j] = new_center
-                # We skip static shapes and do not count their corners
-                pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
-
-            corners = shp.reshape((-1, 1, 2))
-            cv.fillPoly(img, [corners], colors[j])
-        raise
-        # center = (out_p1[i] + out_p2[i]) / 2
-        # p1 = calculate_rigid_transformation_batch(out_p1[i], center, speed, rotation)
-        # p2 = calculate_rigid_transformation_batch(out_p2[i], center, speed, rotation)
-        
-
-        # valid_idx = [0]
-        # for j in range(1, num_lines):
-        #     if not intersect(p1[valid_idx], p2[valid_idx], np.array([p1[j]]), np.array([p2[j]])):
-        #         valid_idx.append(j)
-
-        # out_p1 = np.vstack((out_p1[:,valid_idx,:], p1[np.newaxis,valid_idx,:]))
-        # out_p2 = np.vstack((out_p2[:,valid_idx,:], p2[np.newaxis,valid_idx,:]))
-        # speed = speed[valid_idx]
-        # rotation = rotation[valid_idx]
-        # num_lines = len(valid_idx)
-
-    raise
-
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
-    segments = np.empty((0, 4), dtype=np.int)
-    shapes = []
-    centers = []
-    rads = []
-    points = np.empty((0, 2), dtype=np.int)
+    # print(points)
+    # raise
+    return images, points, events
 
 
-
-    # generate points
-    for i in range(nb_polygons):
-        num_corners = random_state.randint(3, max_sides)
-        min_dim = min(img_size[0], img_size[1])
-        rad = max(random_state.rand() * min_dim / 2, min_dim / 10)
-        x = random_state.randint(rad, img_size[1] - rad)  # Center of a circle
-        y = random_state.randint(rad, img_size[0] - rad)
-
-        # Sample num_corners points inside the circle
-        slices = np.linspace(0, 2 * math.pi, num_corners + 1)
-        angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
-                  for i in range(num_corners)]
-        new_points = np.array([[int(x + max(random_state.rand(), 0.4) * rad * math.cos(a)),
-                                int(y + max(random_state.rand(), 0.4) * rad * math.sin(a))]
-                                for a in angles])
-
-
-        # Filter the points that are too close or that have an angle too flat
-        norms = [np.linalg.norm(new_points[(i-1) % num_corners, :]
-                                - new_points[i, :]) for i in range(num_corners)]
-        mask = np.array(norms) > 0.01
-        new_points = new_points[mask, :]
-        num_corners = new_points.shape[0]
-        corner_angles = [angle_between_vectors(new_points[(i-1) % num_corners, :] -
-                                               new_points[i, :],
-                                               new_points[(i+1) % num_corners, :] -
-                                               new_points[i, :])
-                         for i in range(num_corners)]
-        mask = np.array(corner_angles) < (2 * math.pi / 3)
-        new_points = new_points[mask, :]
-        num_corners = new_points.shape[0]
-        if num_corners < 3:  # not enough corners
-            continue
-
-        # Check that the polygon will not overlap with pre-existing shapes
-        if overlap(np.array([x, y]), rad, centers, rads):
-            continue
-
-
-        shapes.append(new_points)
-        centers.append(np.array([x, y]))
-        rads.append(rad)
-
-
-    # Rotation and Speed
-    centers = np.array(centers)
-    rads = np.array(rads)
-    rotation = [get_random_rotation() for _ in range(len(shapes))]
-    speed = np.array([get_random_speed() for _ in range(len(shapes))])
-    colors = [get_random_color(background_color) for _ in range(len(shapes))]
-
-
-    # Color the polygon with a custom background
-    pts_list = []
-    img_list = []
-    for i in range(num_frames):
-
-        img = next(bg)
-        pts = np.empty((0, 2), dtype=np.int)
-        polygons = np.array([Polygon(shp) for shp in shapes])
-
-        for j, shp in enumerate(shapes):
-
-            temp_shp = (np.matmul(shp - centers[j], rotation[j]) + centers[j] + speed[j]).astype(int)
-            new_center = centers[j] + speed[j]
-
-            # Check that the polygon will not overlap with pre-existing shapes
-            temp_polygons = polygons[np.arange(len(polygons))!=j]
-            poly = Polygon(temp_shp)
-            is_collision = np.array([poly.intersects(p) for p in temp_polygons])
-
-            if not is_collision.any():
-                shapes[j] = temp_shp
-                centers[j] = new_center
-                # We skip static shapes and do not count their corners
-                pts = np.concatenate([pts, keep_points_inside(shp, img_size)], axis=0)
-
-            corners = shp.reshape((-1, 1, 2))
-            cv.fillPoly(img, [corners], colors[j])
-
-        pts_list.append(pts)
-        img_list.append(img)
-    
-        if len(pts) == 0:
-            draw_multiple_polygons(img_size, num_frames, bg_config, max_sides, nb_polygons)
-
-    return np.array(pts_list), np.array(img_list)
 
 
 def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
@@ -1117,12 +1054,12 @@ if __name__ == "__main__":
 
 
 
-    for i in range(2):
+    for i in range(20):
 
         # generate_polygons(img_size)
         # imgs, pnts, evts = draw_lines(img_size, 20, bg_config)
-        imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
-        imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
+        # imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
+        # imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
 
         # print(pnts.shape)
         # print(imgs.shape)
