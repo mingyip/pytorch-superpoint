@@ -470,8 +470,12 @@ def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
     Parameters:
       nb_ellipses: maximal number of ellipses
     """
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
+
+
+
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
+    
 
     centers = np.empty((0, 2), dtype=np.int)
     max_rads = np.empty((0, 1), dtype=np.int)
@@ -502,9 +506,9 @@ def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
 
 
     img_list = []
-    for i in range(num_frames):
-        
-        img = next(bg)
+    for i, img in enumerate(images):
+
+        img = img.astype(float)
         for j, (center, rad, angle, R, S, color) in enumerate(zip(centers, rads, angles, rotation, speed, colors)):
 
             new_center = center + S
@@ -518,11 +522,26 @@ def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
             if not np.any(max(rad) > (np.sqrt(np.sum(diff * diff, axis=1)) - temp_max_rads)):
                 centers[j] = new_center
 
-            cv.ellipse(img, (center[0], center[1]), (rad[0], rad[1]), angle + R, 0, 360, color, -1)
+
+            cx,cy = center[0], center[1]
+            ax1,ax2 =  rad[0], rad[1]
+            angle = angle + R
+            center = (cx,cy)
+            axes = (ax1,ax2)
+
+            cv.ellipse(img, center, axes, angle + R, 0 , 360, (int(color[j]),0,0), -1)
+
         img_list.append(img)
 
-        # cv.imwrite(str(Path('temp', "{}.png".format(i))), img)
-    return np.array([np.empty((0, 2), dtype=np.int) for _ in range(num_frames)]), np.array(img_list)
+
+        points = np.array([np.empty((0, 2), dtype=np.int) for _ in range(num_frames)])
+        images = np.array(img_list)
+
+        event_sim = es.Event_simulator(images[0], 0)
+        events = np.array([event_sim.simulate(img, 0) for img in images[1:]])
+        # events = images[:,:,0:1]
+
+    return images, points, events
 
 
 def draw_star(img_size, num_frames, bg_config, nb_branches=6):
@@ -1054,12 +1073,13 @@ if __name__ == "__main__":
 
 
 
-    for i in range(20):
+    for i in range(1000):
 
         # generate_polygons(img_size)
         # imgs, pnts, evts = draw_lines(img_size, 20, bg_config)
         # imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
         # imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
+        imgs, pnts, evts = draw_ellipses(img_size, 20, bg_config)
 
         # print(pnts.shape)
         # print(imgs.shape)
@@ -1108,4 +1128,3 @@ if __name__ == "__main__":
         # cv.imwrite("{}.png".format(10), bg[10])
 
         # break
-  
