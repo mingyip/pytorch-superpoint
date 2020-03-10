@@ -4,6 +4,7 @@ import cv2 as cv
 import numpy as np
 import math
 import copy
+import time
 
 from pathlib import Path
 from shapely.geometry import Polygon
@@ -211,7 +212,7 @@ def keep_points_inside(points, size):
     mask = (points[:,0] >= 0) & (points[:,0] < size[1]) &\
            (points[:,1] >= 0) & (points[:,1] < size[0])
 
-    return points[:,mask]
+    return points[mask]
 
 
 def  get_next_position(points, center, speed, rotation):
@@ -499,7 +500,7 @@ def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
         rads = np.concatenate([rads, np.array([[ax, ay]])], axis=0)
 
 
-    colors = [get_random_color(background_color) for _ in range(len(centers))]
+    colors = [get_random_color(background_color=background_color) for _ in range(len(centers))]
     angles = [random_state.rand()*90 for _ in range(len(centers))]
     rotation = [random_state.rand()*10-5 for _ in range(len(centers))]
     speed = np.array([get_random_speed() for _ in range(len(centers))])
@@ -508,7 +509,6 @@ def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
     img_list = []
     for i, img in enumerate(images):
 
-        img = img.astype(float)
         for j, (center, rad, angle, R, S, color) in enumerate(zip(centers, rads, angles, rotation, speed, colors)):
 
             new_center = center + S
@@ -523,13 +523,11 @@ def draw_ellipses(img_size, num_frames, bg_config, nb_ellipses=20):
                 centers[j] = new_center
 
 
-            cx,cy = center[0], center[1]
-            ax1,ax2 =  rad[0], rad[1]
-            angle = angle + R
-            center = (cx,cy)
-            axes = (ax1,ax2)
+            center = (center[0], center[1])
+            axes = (rad[0], rad[1])
 
-            cv.ellipse(img, center, axes, angle + R, 0 , 360, (int(color[j]),0,0), -1)
+
+            cv.ellipse(img, center, axes, angle + R, 0 , 360, int(color), -1)
 
         img_list.append(img)
 
@@ -550,8 +548,8 @@ def draw_star(img_size, num_frames, bg_config, nb_branches=6):
       nb_branches: number of branches of the star
     """
 
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
 
     num_branches = random_state.randint(3, nb_branches)
     min_dim = min(img_size[0], img_size[1])
@@ -576,7 +574,7 @@ def draw_star(img_size, num_frames, bg_config, nb_branches=6):
     img_list = []
     for i in range(num_frames):
 
-        img = next(bg)
+        img = images[i]
         pts = np.empty((0, 2), dtype=np.int)
 
         center = (points[0][0], points[0][1])
@@ -584,7 +582,7 @@ def draw_star(img_size, num_frames, bg_config, nb_branches=6):
         for j in range(1, num_branches + 1):
             cv.line(img, (points[0][0], points[0][1]),
                     (points[j][0], points[j][1]),
-                    color, thickness)
+                    int(color[j]), thickness)
 
         # Keep only the points inside the image
         pts = keep_points_inside(points, img_size)
@@ -595,7 +593,13 @@ def draw_star(img_size, num_frames, bg_config, nb_branches=6):
         pts_list.append(pts)
         img_list.append(img)
 
-    return np.array(pts_list), np.array(img_list)
+
+    images = np.array(img_list)
+    points = np.array(pts_list)
+
+    event_sim = es.Event_simulator(images[0], 0)
+    events = np.array([event_sim.simulate(img, 0) for img in images[1:]])
+    return images, points, events
 
 
 
@@ -606,8 +610,8 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
       max_cols: maximal number of cols + 1
       transform_params: set the range of the parameters of the transformations"""
 
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
 
     # Create the grid
     rows = random_state.randint(3, max_rows)  # number of rows
@@ -669,9 +673,9 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
     colors = np.zeros((rows * cols,), np.int32)
     for i in range(rows):
         for j in range(cols):
-            # Get a color that contrast with the neighboring cells
+            # Get a color that contrast with the neighboring cells743
             if i == 0 and j == 0:
-                col = get_random_color(background_color)
+                col = get_random_color(background_color=background_color)
             else:
                 neighboring_colors = []
                 if i != 0:
@@ -690,12 +694,12 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
     row_idx  = [random_state.randint(rows + 1) for _ in range(nb_rows)]
     col_idx1 = [random_state.randint(cols + 1) for _ in range(nb_rows)]
     col_idx2 = [random_state.randint(cols + 1) for _ in range(nb_rows)]
-    rows_colors = [get_random_color(background_color) for _ in range(nb_rows)]
+    rows_colors = [get_random_color(background_color=background_color) for _ in range(nb_rows)]
 
     col_idx  = [random_state.randint(cols + 1) for _ in range(nb_cols)]
     row_idx1 = [random_state.randint(rows + 1) for _ in range(nb_cols)]
     row_idx2 = [random_state.randint(rows + 1) for _ in range(nb_cols)]
-    cols_colors = [get_random_color(background_color) for _ in range(nb_cols)]
+    cols_colors = [get_random_color(background_color=background_color) for _ in range(nb_cols)]
 
 
     # Speed and Rotation
@@ -707,7 +711,7 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
     pts_list = []
     for t in range(num_frames):
 
-        img = next(bg)
+        img = images[t]
         center = np.average(warped_points, axis=0)
         warped_points = (np.matmul(warped_points - center, rotation) + center + speed).astype(int)
 
@@ -734,13 +738,13 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
                         warped_points[row_idx[i] * (cols + 1) + col_idx1[i], 1]),
                     (warped_points[row_idx[i] * (cols + 1) + col_idx2[i], 0],
                     warped_points[row_idx[i] * (cols + 1) + col_idx2[i], 1]),
-                    rows_colors[i], thickness)
+                    int(rows_colors[i]), thickness)
         for i in range(nb_cols):
             cv.line(img, (warped_points[row_idx1[i] * (cols + 1) + col_idx[i], 0],
                         warped_points[row_idx1[i] * (cols + 1) + col_idx[i], 1]),
                     (warped_points[row_idx2[i] * (cols + 1) + col_idx[i], 0],
                     warped_points[row_idx2[i] * (cols + 1) + col_idx[i], 1]),
-                    cols_colors[i], thickness)
+                    int(cols_colors[i]), thickness)
 
         # Keep only the points inside the image
         points = keep_points_inside(warped_points, img.shape[:2])
@@ -751,7 +755,14 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
         pts_list.append(points)
         img_list.append(img)
 
-    return np.array(pts_list), np.array(img_list)
+
+    points = np.array(pts_list)
+    images = np.array(img_list)
+
+    event_sim = es.Event_simulator(images[0], 0)
+    events = np.array([event_sim.simulate(img, 0) for img in images[1:]])
+
+    return images, points, events
 
 
 def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_ratio=0.04,
@@ -764,8 +775,8 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
       transform_params: set the range of the parameters of the transformations
     """
 
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
     # Create the grid
     board_size = (int(img_size[0] * (1 + random_state.rand())),
                   int(img_size[1] * (1 + random_state.rand())))
@@ -831,7 +842,7 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
 
     # Fill the rectangles
     colors = np.zeros(col+1)
-    colors[-1] = get_random_color(background_color)
+    colors[-1] = get_random_color(background_color=background_color)
 
 
     # Draw lines on the boundaries of the stripes at random
@@ -843,11 +854,11 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
     row_idx  = [random_state.choice([0, col + 1]) for _ in range(nb_rows)]
     col_idx1 = [random_state.randint(col + 1) for _ in range(nb_rows)]
     col_idx2 = [random_state.randint(col + 1) for _ in range(nb_rows)]
-    row_color = [get_random_color(background_color) for _ in range(nb_rows)]
+    row_color = [get_random_color(background_color=background_color) for _ in range(nb_rows)]
 
 
     col_idx  = [random_state.randint(col + 1) for _ in range(nb_cols)]
-    col_color = [get_random_color(background_color) for _ in range(nb_cols)]
+    col_color = [get_random_color(background_color=background_color) for _ in range(nb_cols)]
 
     for i in range(col):
             colors[i] = (colors[i-1] + 128 + random_state.randint(-30, 30)) % 256
@@ -863,7 +874,7 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
     for t in range(num_frames):
 
         
-        img = next(bg)
+        img = images[t]
         center = np.average(warped_points, axis=0)
         warped_points = (np.matmul(warped_points - center, rotation) + center + speed).astype(int)
         
@@ -884,7 +895,7 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
                         warped_points[row_idx[i] + col_idx1[i], 1]),
                     (warped_points[row_idx[i] + col_idx2[i], 0],
                     warped_points[row_idx[i] + col_idx2[i], 1]),
-                    row_color[i], thickness)
+                    int(row_color[i]), thickness)
 
 
         for i in range(nb_cols):
@@ -892,7 +903,7 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
                         warped_points[col_idx[i], 1]),
                     (warped_points[col_idx[i] + col + 1, 0],
                     warped_points[col_idx[i] + col + 1, 1]),
-                    col_color[i], thickness)
+                    int(col_color[i]), thickness)
 
 
         # Keep only the points inside the image
@@ -909,8 +920,13 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
         pts_list.append(points)
         img_list.append(img)
 
-    # print(len(pts_list), len(img_list))
-    return np.array(pts_list), np.array(img_list)
+    points = np.array(pts_list)
+    images = np.array(img_list)
+
+    event_sim = es.Event_simulator(images[0], 0)
+    events = np.array([event_sim.simulate(img, 0) for img in images[1:]])
+
+    return images, points, events
 
 
 def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
@@ -929,8 +945,8 @@ def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot
     # The order matters!
     # The indices of two adjacent vertices differ only of one bit (as in Gray codes)
 
-    bg = background_generator(img_size, **bg_config)
-    background_color = int(np.mean(next(bg)))
+    images = generate_background(img_size, num_frames=num_frames)
+    background_color = int(np.mean(images))
     min_dim = min(img_size[:2])
     min_side = min_dim * min_size_ratio
     lx = min_side + random_state.rand() * 2 * min_dim / 3  # dimensions of the cube
@@ -962,8 +978,8 @@ def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot
                                         img_size[0] * trans_interval[1]),
                     0])
 
-    col_face = get_random_color(background_color)
-    thickness = random_state.randint(min_dim * 0.003, min_dim * 0.015)
+    col_face = get_random_color(background_color=background_color)
+    thickness = max(random_state.randint(min_dim * 0.003, min_dim * 0.015), 1)
     speed = get_random_speed()
 
     for i in [0, 1, 2]:
@@ -977,7 +993,7 @@ def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot
     pts_list = []
     for t in range(num_frames):
 
-        img = next(bg)
+        img = images[t]
         cube = np.array([[0, 0, 0],
                      [lx, 0, 0],
                      [0, ly, 0],
@@ -1018,14 +1034,16 @@ def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot
         faces = np.array([[7, 3, 1, 5], [7, 5, 4, 6], [7, 6, 2, 3]])
 
         # Fill the faces and draw the contours
-        for i in [0, 1, 2]:
-            cv.fillPoly(img, [cube[faces[i]].reshape((-1, 1, 2))], col_face)
+        for i in [0, 1, 2]: 
+            cv.fillPoly(img, [cube[faces[i]].reshape((-1, 1, 2))], int(col_face))
         
         for i in [0, 1, 2]:
             for j in [0, 1, 2, 3]:
                 cv.line(img, (cube[faces[i][j], 0], cube[faces[i][j], 1]),
                         (cube[faces[i][(j + 1) % 4], 0], cube[faces[i][(j + 1) % 4], 1]),
-                        col_edge, thickness)
+                        int(col_edge), thickness)
+
+
 
         # Keep only the points inside the image
         points = keep_points_inside(points, img_size[:2])
@@ -1041,7 +1059,14 @@ def draw_cube(img_size, num_frames, bg_config, min_size_ratio=0.2, min_angle_rot
 
         pts_list.append(points)
         img_list.append(img)
-    return np.array(pts_list), np.array(img_list)
+
+    points = np.array(pts_list)
+    images = np.array(img_list)
+
+    event_sim = es.Event_simulator(images[0], 0)
+    events = np.array([event_sim.simulate(img, 0) for img in images[1:]])
+
+    return images, points, events
 
 
 def gaussian_noise(img):
@@ -1070,16 +1095,56 @@ if __name__ == "__main__":
 
     
     img_size = (240, 320)
+    iteration = 1000
 
+    
+    start = time.time()
+    for i in range(iteration):
+        print('draw_lines', i, end='\r')
+        imgs, pnts, evts = draw_lines(img_size, 20, bg_config)
+    print('draw_lines: ', time.time() - start)
 
+    start = time.time()
+    for i in range(iteration):
+        print('draw_polygon', i, end='\r')
+        imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
+    print('draw_polygon: ', time.time() - start)
 
-    for i in range(1000):
+    start = time.time()
+    for i in range(iteration):
+        print('draw_multiple_polygons', i, end='\r')
+        imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
+    print('draw_multiple_polygons: ', time.time() - start)
 
-        # generate_polygons(img_size)
-        # imgs, pnts, evts = draw_lines(img_size, 20, bg_config)
-        # imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
-        # imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
+    start = time.time()
+    for i in range(iteration):
+        print('draw_ellipses', i, end='\r')
         imgs, pnts, evts = draw_ellipses(img_size, 20, bg_config)
+    print('draw_ellipses: ', time.time() - start)
+
+    start = time.time()
+    for i in range(iteration):
+        print('draw_star', i, end='\r')
+        imgs, pnts, evts = draw_star(img_size, 20, bg_config)
+    print('draw_star: ', time.time() - start)
+
+    start = time.time()
+    for i in range(iteration):
+        print('draw_checkerboard', i, end='\r')
+        imgs, pnts, evts = draw_checkerboard(img_size, 20, bg_config)
+    print('draw_checkerboard: ', time.time() - start)
+
+    start = time.time()
+    for i in range(iteration):
+        print('draw_stripes', i, end='\r')
+        imgs, pnts, evts = draw_stripes(img_size, 20, bg_config)
+    print('draw_stripes: ', time.time() - start)
+
+    start = time.time()
+    for i in range(iteration):
+        print('draw_cube', i, end='\r')
+        imgs, pnts, evts = draw_cube(img_size, 20, bg_config)
+    print('draw_cube: ', time.time() - start)
 
         # print(pnts.shape)
         # print(imgs.shape)
@@ -1102,29 +1167,3 @@ if __name__ == "__main__":
 
         #     cv.imwrite("img_{}.png".format(j), img)
         #     cv.imwrite("evt_{}.png".format(j), raw)
-
-
-
-
-    # print(pts_list)
-
-
-    # for i in range(100000):
-    #     bg = generate_background((240, 320))
-
-        # print(bg.shape)
-        # print(bg[0].shape)
-
-        # cv.imwrite("{}.png".format(0), bg[0])
-        # cv.imwrite("{}.png".format(1), bg[1])
-        # cv.imwrite("{}.png".format(2), bg[2])
-        # cv.imwrite("{}.png".format(3), bg[3])
-        # cv.imwrite("{}.png".format(4), bg[4])
-        # cv.imwrite("{}.png".format(5), bg[5])
-        # cv.imwrite("{}.png".format(6), bg[6])
-        # cv.imwrite("{}.png".format(7), bg[7])
-        # cv.imwrite("{}.png".format(8), bg[8])
-        # cv.imwrite("{}.png".format(9), bg[9])
-        # cv.imwrite("{}.png".format(10), bg[10])
-
-        # break
