@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from shapely.geometry import Polygon
 
-import event_simulator as es
+from datasets import event_simulator as es
 
 
 random_state = np.random.RandomState(None)
@@ -126,6 +126,31 @@ def add_salt_and_pepper(img):
     img[black > 0] = 0
     cv.blur(img, (5, 5), img)
     return np.empty((0, 2), dtype=np.int)
+
+
+
+def generate_random_shape(img_size, num_frames, bg_config):
+    """ Generate one random shape 
+    Parameters:
+    img_size: size of the image
+    num_frames: number of frames
+    bg_config: background generation configuration
+    """
+
+    draw_func = [
+        draw_lines,
+        draw_polygon,
+        draw_multiple_polygons,
+        draw_ellipses,
+        draw_star,
+        draw_checkerboard,
+        draw_stripes,
+        draw_cube
+    ]
+
+    return random_state.choice(draw_func)(img_size, num_frames, bg_config)
+
+
 
 def generate_background(size=(960, 1280), num_frames=11, nb_blobs=100, min_rad_ratio=0.01,
                         max_rad_ratio=0.05, min_kernel_size=50, max_kernel_size=300):
@@ -689,7 +714,7 @@ def draw_checkerboard(img_size, num_frames, bg_config, max_rows=7, max_cols=7, t
     # Random lines on the boundaries of the board
     nb_rows = random_state.randint(2, rows + 2)
     nb_cols = random_state.randint(2, cols + 2)
-    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.015)
+    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.02)
     
     row_idx  = [random_state.randint(rows + 1) for _ in range(nb_rows)]
     col_idx1 = [random_state.randint(cols + 1) for _ in range(nb_rows)]
@@ -848,7 +873,8 @@ def draw_stripes(img_size, num_frames, bg_config, max_nb_cols=13, min_width_rati
     # Draw lines on the boundaries of the stripes at random
     nb_rows = random_state.randint(2, 5)
     nb_cols = random_state.randint(2, col + 2)
-    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.015)
+
+    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.02)
 
 
     row_idx  = [random_state.choice([0, col + 1]) for _ in range(nb_rows)]
@@ -1102,48 +1128,176 @@ if __name__ == "__main__":
     for i in range(iteration):
         print('draw_lines', i, end='\r')
         imgs, pnts, evts = draw_lines(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_lines/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_lines/evt_{}.png".format(i*20+j), raw)
     print('draw_lines: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_polygon', i, end='\r')
         imgs, pnts, evts = draw_polygon(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_polygon/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_polygon/evt_{}.png".format(i*20+j), raw)
     print('draw_polygon: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_multiple_polygons', i, end='\r')
         imgs, pnts, evts = draw_multiple_polygons(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_multiple_polygons/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_multiple_polygons/evt_{}.png".format(i*20+j), raw)
     print('draw_multiple_polygons: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_ellipses', i, end='\r')
         imgs, pnts, evts = draw_ellipses(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_ellipses/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_ellipses/evt_{}.png".format(i*20+j), raw)
     print('draw_ellipses: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_star', i, end='\r')
         imgs, pnts, evts = draw_star(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_star/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_star/evt_{}.png".format(i*20+j), raw)
     print('draw_star: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_checkerboard', i, end='\r')
         imgs, pnts, evts = draw_checkerboard(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_checkerboard/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_checkerboard/evt_{}.png".format(i*20+j), raw)
     print('draw_checkerboard: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_stripes', i, end='\r')
         imgs, pnts, evts = draw_stripes(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_stripes/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_stripes/evt_{}.png".format(i*20+j), raw)
     print('draw_stripes: ', time.time() - start)
 
     start = time.time()
     for i in range(iteration):
         print('draw_cube', i, end='\r')
         imgs, pnts, evts = draw_cube(img_size, 20, bg_config)
+
+        for j, (img, pts, evt) in enumerate(zip(imgs, pnts, evts)):            
+        
+            img = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
+            raw = np.zeros((240, 320, 3))
+            raw[:,:,0] = evt[0] * 255
+            raw[:,:,2] = evt[1] * 255
+
+            for pt in pts:
+                p1 = int(pt[0])
+                p2 = int(pt[1])
+                cv.circle(img, (p1, p2), 3, (0, 255, 0), -1)
+                cv.circle(raw, (p1, p2), 3, (0, 255, 0), -1)    
+
+            cv.imwrite("draw_cube/img_{}.png".format(i*20+j), img)
+            cv.imwrite("draw_cube/evt_{}.png".format(i*20+j), raw)
     print('draw_cube: ', time.time() - start)
 
         # print(pnts.shape)

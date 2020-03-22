@@ -58,7 +58,8 @@ class SyntheticDataset_gaussian(data.Dataset):
         "num_parallel_calls": 10,
         "generation": {
             "split_sizes": {"training": 2000, "validation": 100, "test": 250},
-            "image_size": [960, 1280],
+            # "image_size": [960, 1280],
+            "image_size": [120, 160],
             "random_seed": 0,
             "num_frames": 5,
             "params": {
@@ -241,8 +242,14 @@ class SyntheticDataset_gaussian(data.Dataset):
         self.enable_photo_val = False
         ######
 
-        self.action = "training" if task == "train" else "validation"
-        # self.warp_input = warp_input
+
+        if task == "train":
+            self.action = "training"
+            self.num_data = self.config["generation"]["split_sizes"]["training"]
+        else:
+            self.action = "validation"
+            self.num_data = self.config["generation"]["split_sizes"]["validation"]
+        
 
         self.cell_size = 8
         self.getPts = getPts
@@ -268,10 +275,10 @@ class SyntheticDataset_gaussian(data.Dataset):
 
         splits = {s: {"images": [], "points": []} for s in [self.action]}
 
-        for primitive in primitives:
-            tar_path = Path(basepath, "{}.tar.gz".format(primitive))
-            if not tar_path.exists():
-                self.dump_primitive_data(primitive, tar_path, self.config)
+        # for primitive in primitives:
+        #     tar_path = Path(basepath, "{}.tar.gz".format(primitive))
+        #     if not tar_path.exists():
+        #         self.dump_primitive_data(primitive, tar_path, self.config)
 
             # # Untar locally
             # logging.info("Extracting archive for primitive {}.".format(primitive))
@@ -282,25 +289,25 @@ class SyntheticDataset_gaussian(data.Dataset):
             # tar.close()
 
 
-        # Gather filenames in all splits, optionally truncate
-        for primitive in primitives:
-            temp_dir = Path(TMPDIR)
-            truncate = self.config["truncate"].get(primitive, 1)
-            path = Path(temp_dir, primitive)
-            for s in splits:
-                e = [str(p) for p in Path(path, "images", s).iterdir()]
-                f = [p.replace("images", "points") for p in e]
-                f = [p.replace(".png", ".npy") for p in f]
-                splits[s]["images"].extend(e[: int(truncate * len(e))])
-                splits[s]["points"].extend(f[: int(truncate * len(f))])
+        # # Gather filenames in all splits, optionally truncate
+        # for primitive in primitives:
+        #     temp_dir = Path(TMPDIR)
+        #     truncate = self.config["truncate"].get(primitive, 1)
+        #     path = Path(temp_dir, primitive)
+        #     for s in splits:
+        #         e = [str(p) for p in Path(path, "images", s).iterdir()]
+        #         f = [p.replace("images", "points") for p in e]
+        #         f = [p.replace(".png", ".npy") for p in f]
+        #         splits[s]["images"].extend(e[: int(truncate * len(e))])
+        #         splits[s]["points"].extend(f[: int(truncate * len(f))])
 
-        # Shuffle
-        for s in splits:
-            perm = np.random.RandomState(0).permutation(len(splits[s]["images"]))
-            for obj in ["images", "points"]:
-                splits[s][obj] = np.array(splits[s][obj])[perm].tolist()
+        # # Shuffle
+        # for s in splits:
+        #     perm = np.random.RandomState(0).permutation(len(splits[s]["images"]))
+        #     for obj in ["images", "points"]:
+        #         splits[s][obj] = np.array(splits[s][obj])[perm].tolist()
 
-        self.crawl_folders(splits)
+        # self.crawl_folders(splits)
 
     def crawl_folders(self, splits):
         sequence_set = []
@@ -360,20 +367,12 @@ class SyntheticDataset_gaussian(data.Dataset):
             image: tensor(1, H, W)
         """
 
-        def checkSat(img, name=""):
-            if img.max() > 1:
-                print(name, img.max())
-            elif img.min() < 0:
-                print(name, img.min())
-
         def imgPhotometric(img):
             """
-
             :param img:
                 numpy (H, W)
             :return:
             """
-
             augmentation = self.ImgAugTransform(**self.config["augmentation"])
             img = img[:, :, np.newaxis]
             img = augmentation(img)
@@ -381,262 +380,74 @@ class SyntheticDataset_gaussian(data.Dataset):
             img = cusAug(img, **self.config["augmentation"])
             return img
 
-        def get_labels(pnts, H, W):
-            labels = torch.zeros(H, W)
-            # print('--2', pnts, pnts.size())
-            # pnts_int = torch.min(pnts.round().long(), torch.tensor([[H-1, W-1]]).long())
-            pnts_int = torch.min(
-                pnts.round().long(), torch.tensor([[W - 1, H - 1]]).long()
-            )
-            # print('--3', pnts_int, pnts_int.size())
-            labels[pnts_int[:, 1], pnts_int[:, 0]] = 1
-            return labels
-
-        def get_label_res(H, W, pnts):
-            quan = lambda x: x.round().long()
-            labels_res = torch.zeros(H, W, 2)
-            # pnts_int = torch.min(pnts.round().long(), torch.tensor([[H-1, W-1]]).long())
-
-            labels_res[quan(pnts)[:, 1], quan(pnts)[:, 0], :] = pnts - pnts.round()
-            # print("pnts max: ", quan(pnts).max(dim=0))
-            # print("labels_res: ", labels_res.shape)
-            labels_res = labels_res.transpose(1, 2).transpose(0, 1)
-            return labels_res
 
         from datasets.data_tools import np_to_tensor
         from utils.utils import filter_points
         from utils.var_dim import squeezeToNumpy
 
-        sample = self.samples[index]
-        img = load_as_float(sample["image"])
-        H, W = img.shape[0], img.shape[1]
-        self.H = H
-        self.W = W
-        pnts = np.load(sample["points"])  # (y, x)
-        pnts = torch.tensor(pnts).float()
-        pnts = torch.stack((pnts[:, 1], pnts[:, 0]), dim=1)  # (x, y)
-        pnts = filter_points(pnts, torch.tensor([W, H]))
         sample = {}
+        H, W = self.config["generation"]["image_size"]
+        imgs, pnts, evts = synthetic_dataset.generate_random_shape((H, W), 5, None)
+        idx = np.random.randint(1000)
 
-        # print('pnts: ', pnts[:5])
-        # print('--1', pnts)
-        labels_2D = get_labels(pnts, H, W)
-        sample.update({"labels_2D": labels_2D.unsqueeze(0)})
 
-        # assert Hc == round(Hc) and Wc == round(Wc), "Input image size not fit in the block size"
-        if (
-            self.config["augmentation"]["photometric"]["enable_train"]
-            and self.action == "training"
-        ) or (
-            self.config["augmentation"]["photometric"]["enable_val"]
-            and self.action == "validation"
-        ):
-            # print('>>> Photometric aug enabled for %s.'%self.action)
-            # augmentation = self.ImgAugTransform(**self.config["augmentation"])
-            img = imgPhotometric(img)
-        else:
-            # print('>>> Photometric aug disabled for %s.'%self.action)
-            pass
+        # Only take the last set of points
+        pnts = torch.tensor(pnts[-1]).float()
+        pnts = torch.stack((pnts[:, 1], pnts[:, 0]), dim=1)  # (x, y)
+        pnts = filter_points(pnts, torch.tensor([H, W]))
+        pnts_long = pnts.round().long()
 
-        if not (
-            (
-                self.config["augmentation"]["homographic"]["enable_train"]
-                and self.action == "training"
-            )
-            or (
-                self.config["augmentation"]["homographic"]["enable_val"]
-                and self.action == "validation"
-            )
-        ):
-            # print('<<< Homograpy aug disabled for %s.'%self.action)
-            img = img[:, :, np.newaxis]
-            # labels = labels.view(-1,H,W)
-            if self.transform is not None:
-                img = self.transform(img)
-            sample["image"] = img
-            # sample = {'image': img, 'labels_2D': labels}
-            valid_mask = self.compute_valid_mask(
-                torch.tensor([H, W]), inv_homography=torch.eye(3)
-            )
-            sample.update({"valid_mask": valid_mask})
-            labels_res = get_label_res(H, W, pnts)
-            pnts_post = pnts
-            # pnts_for_gaussian = pnts
-        else:
-            # print('>>> Homograpy aug enabled for %s.'%self.action)
-            # img_warp = img
-            from utils.utils import homography_scaling_torch as homography_scaling
-            from numpy.linalg import inv
 
-            homography = self.sample_homography(
-                np.array([2, 2]),
-                shift=-1,
-                **self.config["augmentation"]["homographic"]["params"],
-            )
+        labels = torch.zeros(H, W)
+        labels[pnts_long[:, 0], pnts_long[:, 1]] = 1
+        valid_mask = self.compute_valid_mask(torch.tensor([H, W]), inv_homography=torch.eye(3))
 
-            ##### use inverse from the sample homography
-            homography = inv(homography)
-            ######
 
-            homography = torch.tensor(homography).float()
-            inv_homography = homography.inverse()
-            img = torch.from_numpy(img)
-            warped_img = self.inv_warp_image(
-                img.squeeze(), inv_homography, mode="bilinear"
-            )
-            warped_img = warped_img.squeeze().numpy()
-            warped_img = warped_img[:, :, np.newaxis]
+        for i, evt in enumerate(evts):
+            evts[i, 0] = imgPhotometric(evt[0, :, :]).squeeze()
+            evts[i, 1] = imgPhotometric(evt[1, :, :]).squeeze()
+        evts = torch.from_numpy(evts.astype(np.float32))
 
-            # labels = torch.from_numpy(labels)
-            # warped_labels = self.inv_warp_image(labels.squeeze(), inv_homography, mode='nearest').unsqueeze(0)
-            warped_pnts = self.warp_points(pnts, homography_scaling(homography, H, W))
-            warped_pnts = filter_points(warped_pnts, torch.tensor([W, H]))
-            # pnts = warped_pnts[:, [1, 0]]
-            # pnts_for_gaussian = warped_pnts
-            # warped_labels = torch.zeros(H, W)
-            # warped_labels[warped_pnts[:, 1], warped_pnts[:, 0]] = 1
-            # warped_labels = warped_labels.view(-1, H, W)
 
-            if self.transform is not None:
-                warped_img = self.transform(warped_img)
-            # sample = {'image': warped_img, 'labels_2D': warped_labels}
-            sample["image"] = warped_img
+        # sample.update({"images": imgs})
+        sample.update({"valid_mask": valid_mask})
+        sample.update({"labels_2D": labels.unsqueeze(0)})
+        # sample.update({"points": pnts})
+        sample.update({"events": evts})
 
-            valid_mask = self.compute_valid_mask(
-                torch.tensor([H, W]),
-                inv_homography=inv_homography,
-                erosion_radius=self.config["augmentation"]["homographic"][
-                    "valid_border_margin"
-                ],
-            )  # can set to other value
-            sample.update({"valid_mask": valid_mask})
-
-            labels_2D = get_labels(warped_pnts, H, W)
-            sample.update({"labels_2D": labels_2D.unsqueeze(0)})
-
-            labels_res = get_label_res(H, W, warped_pnts)
-            pnts_post = warped_pnts
-
-        if self.gaussian_label:
-            # warped_labels_gaussian = get_labels_gaussian(pnts)
-            from datasets.data_tools import get_labels_bi
-
-            labels_2D_bi = get_labels_bi(pnts_post, H, W)
-
-            labels_gaussian = self.gaussian_blur(squeezeToNumpy(labels_2D_bi))
-            labels_gaussian = np_to_tensor(labels_gaussian, H, W)
-            sample["labels_2D_gaussian"] = labels_gaussian
-
-            # add residua
-
-        sample.update({"labels_res": labels_res})
-
-        ### code for warped image
-        if self.config["warped_pair"]["enable"]:
-            from datasets.data_tools import warpLabels
-
-            homography = self.sample_homography(
-                np.array([2, 2]), shift=-1, **self.config["warped_pair"]["params"]
-            )
-
-            ##### use inverse from the sample homography
-            homography = np.linalg.inv(homography)
-            #####
-            inv_homography = np.linalg.inv(homography)
-
-            homography = torch.tensor(homography).type(torch.FloatTensor)
-            inv_homography = torch.tensor(inv_homography).type(torch.FloatTensor)
-
-            # photometric augmentation from original image
-
-            # warp original image
-            warped_img = img.type(torch.FloatTensor)
-            warped_img = self.inv_warp_image(
-                warped_img.squeeze(), inv_homography, mode="bilinear"
-            ).unsqueeze(0)
-            if (self.enable_photo_train == True and self.action == "train") or (
-                self.enable_photo_val and self.action == "val"
-            ):
-                warped_img = imgPhotometric(
-                    warped_img.numpy().squeeze()
-                )  # numpy array (H, W, 1)
-                warped_img = torch.tensor(warped_img, dtype=torch.float32)
-                pass
-            warped_img = warped_img.view(-1, H, W)
-
-            # warped_labels = warpLabels(pnts, H, W, homography)
-            warped_set = warpLabels(pnts, H, W, homography, bilinear=True)
-            warped_labels = warped_set["labels"]
-            warped_res = warped_set["res"]
-            warped_res = warped_res.transpose(1, 2).transpose(0, 1)
-            # print("warped_res: ", warped_res.shape)
-            if self.gaussian_label:
-                # print("do gaussian labels!")
-                # warped_labels_gaussian = get_labels_gaussian(warped_set['warped_pnts'].numpy())
-                # warped_labels_bi = self.inv_warp_image(labels_2D.squeeze(), inv_homography, mode='nearest').unsqueeze(0) # bilinear, nearest
-                warped_labels_bi = warped_set["labels_bi"]
-                warped_labels_gaussian = self.gaussian_blur(
-                    squeezeToNumpy(warped_labels_bi)
-                )
-                warped_labels_gaussian = np_to_tensor(warped_labels_gaussian, H, W)
-                sample["warped_labels_gaussian"] = warped_labels_gaussian
-                sample.update({"warped_labels_bi": warped_labels_bi})
-
-            sample.update(
-                {
-                    "warped_img": warped_img,
-                    "warped_labels": warped_labels,
-                    "warped_res": warped_res,
-                }
-            )
-
-            # print('erosion_radius', self.config['warped_pair']['valid_border_margin'])
-            valid_mask = self.compute_valid_mask(
-                torch.tensor([H, W]),
-                inv_homography=inv_homography,
-                erosion_radius=self.config["warped_pair"]["valid_border_margin"],
-            )  # can set to other value
-            sample.update({"warped_valid_mask": valid_mask})
-            sample.update(
-                {"homographies": homography, "inv_homographies": inv_homography}
-            )
-
-        # labels = self.labels2Dto3D(self.cell_size, labels)
-        # labels = torch.from_numpy(labels[np.newaxis,:,:])
-        # input.update({'labels': labels})
-
-        ### code for warped image
-
-        # if self.config['gaussian_label']['enable']:
-        #     heatmaps = np.zeros((H, W))
-        #     # for center in pnts_int.numpy():
-        #     for center in pnts[:, [1, 0]].numpy():
-        #         # print("put points: ", center)
-        #         heatmaps = self.putGaussianMaps(center, heatmaps)
-        #     # import matplotlib.pyplot as plt
-        #     # plt.figure(figsize=(5, 10))
-        #     # plt.subplot(211)
-        #     # plt.imshow(heatmaps)
-        #     # plt.colorbar()
-        #     # plt.subplot(212)
-        #     # plt.imshow(np.squeeze(warped_labels.numpy()))
-        #     # plt.show()
-        #     # import time
-        #     # time.sleep(500)
-        #     # results = self.pool.map(self.putGaussianMaps_par, warped_pnts.numpy())
-
-        #     warped_labels_gaussian = torch.from_numpy(heatmaps).view(-1, H, W)
-        #     warped_labels_gaussian[warped_labels_gaussian>1.] = 1.
-
-        #     sample['labels_2D_gaussian'] = warped_labels_gaussian
-
-        if self.getPts:
-            sample.update({"pts": pnts})
 
         return sample
 
+        # print("valid_mask: ", valid_mask.dtype, valid_mask.shape)
+        # print("labels: ", labels.dtype, labels.shape)
+        # print("points: ", pnts.dtype, pnts.shape)
+        # print("events: ", evts.dtype, evts.shape)
+        
+        # # Output event images
+        # for i, evt in enumerate(evts):
+        #     tmp = np.zeros((H, W, 3))
+        #     tmp[:, :, 0] = evt[0, :, :] * 255
+        #     tmp[:, :, 2] = evt[1, :, :] * 255
+        #     for pt in pnts:
+        #         cv2.circle(tmp, (int(pt[1].numpy()), int(pt[0].numpy())), 3, (0, 255, 0), -1)
+        #     cv2.imwrite("temp/img{}_{}.png".format(idx, i), tmp)
+
+
+        # # Output label images
+        # tmp = labels.numpy()
+        # print(tmp.shape, tmp.dtype)
+        # for pt in pnts:
+        #     cv2.circle(tmp, (int(pt[0].numpy()), int(pt[0].numpy())), 3, (0, 255, 0), -1)
+        # cv2.imwrite("temp/labels_{}.png".format(idx), tmp * 255)
+
+        # raise
+
+
+
+        
+
     def __len__(self):
-        return len(self.samples)
+        return self.num_data
 
     ## util functions
     def gaussian_blur(self, image):
@@ -654,3 +465,4 @@ class SyntheticDataset_gaussian(data.Dataset):
         image = image[:, :, np.newaxis]
         heatmaps = augmentation(image)
         return heatmaps.squeeze()
+

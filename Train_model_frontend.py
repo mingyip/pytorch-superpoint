@@ -716,11 +716,12 @@ class Train_model_frontend(object):
             int - number of images
         :return:
         """
+
         for element in list(tb_imgs):
             for idx in range(tb_imgs[element].shape[0]):
                 if idx >= max_img:
                     break
-                # print(f"element: {element}")
+
                 self.writer.add_image(
                     task + "-" + element + "/%d" % idx,
                     tb_imgs[element][idx, ...],
@@ -876,6 +877,8 @@ class Train_model_frontend(object):
             if type(element) is torch.Tensor:
                 if element.dim() == 4:
                     tb_images_dict[e] = element
+                if e == "events":
+                    tb_images_dict[e] = element[:, -1, :, :, :]
                 # print("shape of ", i, " ", element.shape)
         return tb_images_dict
 

@@ -15,7 +15,7 @@ class SuperPointNet_gauss2(torch.nn.Module):
         super(SuperPointNet_gauss2, self).__init__()
         c1, c2, c3, c4, c5, d1 = 64, 64, 128, 128, 256, 256
         det_h = 65
-        self.inc = inconv(1, c1)
+        self.inc = inconv(2, c1)
         self.down1 = down(c1, c2)
         self.down2 = down(c2, c3)
         self.down3 = down(c3, c4)

@@ -6,6 +6,7 @@ from imgaug import augmenters as iaa
 import numpy as np
 import cv2
 
+np.random.bit_generator = np.random._bit_generator
 
 class ImgAugTransform:
     def __init__(self, **config):
@@ -14,52 +15,52 @@ class ImgAugTransform:
 
         ## old photometric
         self.aug = iaa.Sequential([
-            iaa.Sometimes(0.25, iaa.GaussianBlur(sigma=(0, 3.0))),
-            iaa.Sometimes(0.25,
-                          iaa.OneOf([iaa.Dropout(p=(0, 0.1)),
-                                     iaa.CoarseDropout(0.1, size_percent=0.5)])),
-            iaa.Sometimes(0.25,
-                          iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05), per_channel=0.5),
-                          )
+            # iaa.Sometimes(0.25, iaa.GaussianBlur(sigma=(0, 3.0))),
+            # iaa.Sometimes(0.25,
+            #               iaa.OneOf([iaa.Dropout(p=(0, 0.1)),
+            #                          iaa.CoarseDropout(0.1, size_percent=0.5)])),
+            # iaa.Sometimes(0.25,
+            #               iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05), per_channel=0.5),
+            #               )
         ])
+
 
         if config['photometric']['enable']:
             params = config['photometric']['params']
             aug_all = []
-            if params.get('random_brightness', False):
-                change = params['random_brightness']['max_abs_change']
-                aug = iaa.Add((-change, change))
-                #                 aug_all.append(aug)
-                aug_all.append(aug)
-            # if params['random_contrast']:
-            if params.get('random_contrast', False):
-                change = params['random_contrast']['strength_range']
-                aug = iaa.LinearContrast((change[0], change[1]))
-                aug_all.append(aug)
-            # if params['additive_gaussian_noise']:
-            if params.get('additive_gaussian_noise', False):
-                change = params['additive_gaussian_noise']['stddev_range']
-                aug = iaa.AdditiveGaussianNoise(scale=(change[0], change[1]))
-                aug_all.append(aug)
-            # if params['additive_speckle_noise']:
+            # if params.get('random_brightness', False):
+            #     change = params['random_brightness']['max_abs_change']
+            #     aug = iaa.Add((-change, change))
+            #     #                 aug_all.append(aug)
+            #     aug_all.append(aug)
+
+            # if params.get('random_contrast', False):
+            #     change = params['random_contrast']['strength_range']
+            #     aug = iaa.LinearContrast((change[0], change[1]))
+            #     aug_all.append(aug)
+
+            # if params.get('additive_gaussian_noise', False):
+            #     change = params['additive_gaussian_noise']['stddev_range']
+            #     aug = iaa.AdditiveGaussianNoise(scale=(change[0], change[1]))
+            #     aug_all.append(aug)
+
             if params.get('additive_speckle_noise', False):
                 change = params['additive_speckle_noise']['prob_range']
-                # aug = iaa.Dropout(p=(change[0], change[1]))
                 aug = iaa.ImpulseNoise(p=(change[0], change[1]))
                 aug_all.append(aug)
-            # if params['motion_blur']:
-            if params.get('motion_blur', False):
-                change = params['motion_blur']['max_kernel_size']
-                if change > 3:
-                    change = randint(3, change)
-                elif change == 3:
-                    aug = iaa.Sometimes(0.5, iaa.MotionBlur(change))
-                aug_all.append(aug)
 
-            if params.get('GaussianBlur', False):
-                change = params['GaussianBlur']['sigma']
-                aug = iaa.GaussianBlur(sigma=(change))
-                aug_all.append(aug)
+            # if params.get('motion_blur', False):
+            #     change = params['motion_blur']['max_kernel_size']
+            #     if change > 3:
+            #         change = randint(3, change)
+            #     elif change == 3:
+            #         aug = iaa.Sometimes(0.5, iaa.MotionBlur(change))
+            #     aug_all.append(aug)
+
+            # if params.get('GaussianBlur', False):
+            #     change = params['GaussianBlur']['sigma']
+            #     aug = iaa.GaussianBlur(sigma=(change))
+            #     aug_all.append(aug)
 
             self.aug = iaa.Sequential(aug_all)
 
