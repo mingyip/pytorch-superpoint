@@ -7,6 +7,9 @@ import numpy as np
 import cv2
 
 
+np.random.bit_generator = np.random._bit_generator
+
+
 class ImgAugTransform:
     def __init__(self, **config):
         from numpy.random import uniform

@@ -57,7 +57,7 @@ class SyntheticDataset_gaussian(data.Dataset):
         "add_augmentation_to_test_set": False,
         "num_parallel_calls": 10,
         "generation": {
-            "split_sizes": {"training": 10000, "validation": 200, "test": 500},
+            "split_sizes": {"training": 100, "validation": 2, "test": 5},
             "image_size": [960, 1280],
             "random_seed": 0,
             "params": {
@@ -224,6 +224,7 @@ class SyntheticDataset_gaussian(data.Dataset):
 
         basepath = Path(
             DATA_PATH,
+            "Data",
             "synthetic_shapes"
             + ("_{}".format(config["suffix"]) if config["suffix"] is not None else ""),
         )
@@ -270,25 +271,6 @@ class SyntheticDataset_gaussian(data.Dataset):
             sample = {"image": img, "points": pnts}
             sequence_set.append(sample)
         self.samples = sequence_set
-
-    # def putGaussianMaps_par(self, center):
-    #     crop_size_y = self.params_transform['crop_size_y']
-    #     crop_size_x = self.params_transform['crop_size_x']
-    #     stride = self.params_transform['stride']
-    #     sigma = self.params_transform['sigma']
-
-    #     grid_y = crop_size_y / stride
-    #     grid_x = crop_size_x / stride
-    #     start = stride / 2.0 - 0.5
-    #     xx, yy = np.meshgrid(range(int(grid_x)), range(int(grid_y)))
-    #     xx = xx * stride + start
-    #     yy = yy * stride + start
-    #     d2 = (xx - center[0]) ** 2 + (yy - center[1]) ** 2
-    #     exponent = d2 / 2.0 / sigma / sigma
-    #     mask = exponent <= sigma
-    #     cofid_map = np.exp(-exponent)
-    #     cofid_map = np.multiply(mask, cofid_map)
-    #     return cofid_map
 
     def putGaussianMaps(self, center, accumulate_confid_map):
         crop_size_y = self.params_transform["crop_size_y"]

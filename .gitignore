@@ -4,3 +4,5 @@
 *.pyc
 
 *.BlueApes
+
+datasets/Data/
