@@ -6,3 +6,5 @@
 *.BlueApes
 
 datasets/Data/
+
+*.tar
