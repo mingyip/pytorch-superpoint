@@ -361,7 +361,7 @@ if __name__ == '__main__':
 
 
     logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s',
-                        datefmt='%m/%d/%Y %H:%M:%S', level=logging.INFO)
+                        datefmt='%Y/%m/%d %H:%M:%S', level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str)
     parser.add_argument('-o', '--outputImg', action='store_true')

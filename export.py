@@ -364,7 +364,7 @@ if __name__ == "__main__":
     torch.set_default_tensor_type(torch.FloatTensor)
     logging.basicConfig(
         format="[%(asctime)s %(levelname)s] %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
+        datefmt="%Y/%m/%d %H:%M:%S",
         level=logging.INFO,
     )
 
