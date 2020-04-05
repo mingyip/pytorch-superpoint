@@ -18,6 +18,22 @@ import torch.nn as nn
 # from utils.nms_pytorch import box_nms as box_nms_retinaNet
 from utils.d2s import DepthToSpace, SpaceToDepth
 
+
+
+def writeimage(img, pnts, img_type="img", idx=''):
+
+    img = img * 255
+
+    if len(img.shape) == 2 or img.shape[2] == 1:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+
+    for pt in pnts:
+        img = cv2.circle(img, (int(pt[0]), int(pt[1])), 1, (0, 255, 0), -1) 
+
+
+    cv2.imwrite(f'temp/{idx}_{img_type}.png', img)
+    
+
 def img_overlap(img_r, img_g, img_gray):  # img_b repeat
     def to_3d(img):
         if len(img.shape) == 2:
