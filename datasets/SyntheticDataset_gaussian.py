@@ -49,13 +49,10 @@ class SyntheticDataset_gaussian(data.Dataset):
     default_config = {
         "primitives": "all",
         "truncate": {},
-        "validation_size": -1,
-        "test_size": -1,
-        "on-the-fly": False,
+        "on_the_fly": False,
         "cache_in_memory": False,
         "suffix": None,
         "add_augmentation_to_test_set": False,
-        "num_parallel_calls": 10,
         "generation": {
             "split_sizes": {"training": 100, "validation": 2, "test": 5},
             "image_size": [960, 1280],
@@ -83,8 +80,6 @@ class SyntheticDataset_gaussian(data.Dataset):
         },
     }
 
-    # debug = True
-
     if debug == True:
         drawing_primitives = [
             "draw_checkerboard",
@@ -109,7 +104,6 @@ class SyntheticDataset_gaussian(data.Dataset):
     """
 
     def dump_primitive_data(self, primitive, tar_path, config):
-        # temp_dir = Path(os.environ['TMPDIR'], primitive)
         temp_dir = Path(TMPDIR, primitive)
 
         tf.logging.info("Generating tarfile for primitive {}.".format(primitive))
@@ -170,8 +164,6 @@ class SyntheticDataset_gaussian(data.Dataset):
         seed=None,
         task="train",
         sequence_length=3,
-        transform=None,
-        target_transform=None,
         getPts=False,
         warp_input=False,
         **config,
@@ -180,6 +172,7 @@ class SyntheticDataset_gaussian(data.Dataset):
         from utils.photometric import ImgAugTransform, customizedTransform
         from utils.utils import compute_valid_mask
         from utils.utils import inv_warp_image, warp_points
+        import torchvision.transforms as transforms
 
         torch.set_default_tensor_type(torch.FloatTensor)
         np.random.seed(seed)
@@ -189,7 +182,7 @@ class SyntheticDataset_gaussian(data.Dataset):
         self.config = self.default_config
         self.config = dict_update(self.config, dict(config))
 
-        self.transform = transform
+        self.transform = transforms.Compose([transforms.ToTensor()])
         self.sample_homography = sample_homography
         self.compute_valid_mask = compute_valid_mask
         self.inv_warp_image = inv_warp_image
@@ -212,7 +205,6 @@ class SyntheticDataset_gaussian(data.Dataset):
 
         self.gaussian_label = False
         if self.config["gaussian_label"]["enable"]:
-            # self.params_transform = {'crop_size_y': 120, 'crop_size_x': 160, 'stride': 1, 'sigma': self.config['gaussian_label']['sigma']}
             self.gaussian_label = True
 
         self.pool = multiprocessing.Pool(6)
@@ -240,7 +232,6 @@ class SyntheticDataset_gaussian(data.Dataset):
             logging.info("Extracting archive for primitive {}.".format(primitive))
             logging.info(f"tar_path: {tar_path}")
             tar = tarfile.open(tar_path)
-            # temp_dir = Path(os.environ['TMPDIR'])
             temp_dir = Path(TMPDIR)
             tar.extractall(path=temp_dir)
             tar.close()
@@ -309,7 +300,6 @@ class SyntheticDataset_gaussian(data.Dataset):
 
         def imgPhotometric(img):
             """
-
             :param img:
                 numpy (H, W)
             :return:
@@ -323,23 +313,18 @@ class SyntheticDataset_gaussian(data.Dataset):
 
         def get_labels(pnts, H, W):
             labels = torch.zeros(H, W)
-            # print('--2', pnts, pnts.size())
-            # pnts_int = torch.min(pnts.round().long(), torch.tensor([[H-1, W-1]]).long())
+
             pnts_int = torch.min(
                 pnts.round().long(), torch.tensor([[W - 1, H - 1]]).long()
             )
-            # print('--3', pnts_int, pnts_int.size())
             labels[pnts_int[:, 1], pnts_int[:, 0]] = 1
             return labels
 
         def get_label_res(H, W, pnts):
             quan = lambda x: x.round().long()
             labels_res = torch.zeros(H, W, 2)
-            # pnts_int = torch.min(pnts.round().long(), torch.tensor([[H-1, W-1]]).long())
 
             labels_res[quan(pnts)[:, 1], quan(pnts)[:, 0], :] = pnts - pnts.round()
-            # print("pnts max: ", quan(pnts).max(dim=0))
-            # print("labels_res: ", labels_res.shape)
             labels_res = labels_res.transpose(1, 2).transpose(0, 1)
             return labels_res
 
@@ -391,8 +376,7 @@ class SyntheticDataset_gaussian(data.Dataset):
             # print('<<< Homograpy aug disabled for %s.'%self.action)
             img = img[:, :, np.newaxis]
             # labels = labels.view(-1,H,W)
-            if self.transform is not None:
-                img = self.transform(img)
+            img = self.transform(img)
             sample["image"] = img
             # sample = {'image': img, 'labels_2D': labels}
             valid_mask = self.compute_valid_mask(
@@ -437,8 +421,7 @@ class SyntheticDataset_gaussian(data.Dataset):
             # warped_labels[warped_pnts[:, 1], warped_pnts[:, 0]] = 1
             # warped_labels = warped_labels.view(-1, H, W)
 
-            if self.transform is not None:
-                warped_img = self.transform(warped_img)
+            warped_img = self.transform(warped_img)
             # sample = {'image': warped_img, 'labels_2D': warped_labels}
             sample["image"] = warped_img
 

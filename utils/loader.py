@@ -38,33 +38,23 @@ def worker_init_fn(worker_id):
 
    """
    base_seed = torch.IntTensor(1).random_().item()
-   # print(worker_id, base_seed)
    np.random.seed(base_seed + worker_id)
 
 
 def dataLoader(config, dataset='syn', warp_input=False, train=True, val=True):
-    import torchvision.transforms as transforms
-    training_params = config.get('training', {})
-    workers_train = training_params.get('workers_train', 1) # 16
-    workers_val   = training_params.get('workers_val', 1) # 16
-        
-    logging.info(f"workers_train: {workers_train}, workers_val: {workers_val}")
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.ToTensor(),
-        ]),
-        'val': transforms.Compose([
-            transforms.ToTensor(),
-        ]),
-    }
-    # if dataset == 'syn':
-    #     from datasets.SyntheticDataset_gaussian import SyntheticDataset as Dataset
-    # else:
+
+
     Dataset = get_module('datasets', dataset)
-    print(f"dataset: {dataset}")
+    training_params = config.get('training', {})
+    workers_train = training_params.get('workers_train', 16) # 16
+    workers_val   = training_params.get('workers_val', 16) # 16
+    
+    
+    logging.info(f"Dataset: {dataset}")
+    logging.info(f"workers_train: {workers_train}, workers_val: {workers_val}")
+    
 
     train_set = Dataset(
-        transform=data_transforms['train'],
         task = 'train',
         **config['data'],
     )
@@ -75,7 +65,6 @@ def dataLoader(config, dataset='syn', warp_input=False, train=True, val=True):
         worker_init_fn=worker_init_fn
     )
     val_set = Dataset(
-        transform=data_transforms['train'],
         task = 'val',
         **config['data'],
     )
@@ -85,26 +74,19 @@ def dataLoader(config, dataset='syn', warp_input=False, train=True, val=True):
         num_workers=workers_val,
         worker_init_fn=worker_init_fn
     )
-    # val_set, val_loader = None, None
     return {'train_loader': train_loader, 'val_loader': val_loader,
             'train_set': train_set, 'val_set': val_set}
 
+
 def dataLoader_test(config, dataset='syn', warp_input=False, export_task='train'):
-    import torchvision.transforms as transforms
     training_params = config.get('training', {})
     workers_test = training_params.get('workers_test', 1) # 16
     logging.info(f"workers_test: {workers_test}")
 
-    data_transforms = {
-        'test': transforms.Compose([
-            transforms.ToTensor(),
-        ])
-    }
     test_loader = None
     if dataset == 'syn':
         from datasets.SyntheticDataset import SyntheticDataset
         test_set = SyntheticDataset(
-            transform=data_transforms['test'],
             train=False,
             warp_input=warp_input,
             getPts=True,
@@ -116,7 +98,6 @@ def dataLoader_test(config, dataset='syn', warp_input=False, export_task='train'
         if config['data']['preprocessing']['resize']:
             size = config['data']['preprocessing']['resize']
         test_set = PatchesDataset(
-            transform=data_transforms['test'],
             **config['data'],
         )
         test_loader = torch.utils.data.DataLoader(
@@ -138,9 +119,7 @@ def dataLoader_test(config, dataset='syn', warp_input=False, export_task='train'
             num_workers=workers_test,
             worker_init_fn=worker_init_fn
         )
-    # elif dataset == 'Kitti' or 'Tum':
     else:
-        # from datasets.Kitti import Kitti
         logging.info(f"load dataset from : {dataset}")
         Dataset = get_module('datasets', dataset)
         test_set = Dataset(
@@ -153,7 +132,6 @@ def dataLoader_test(config, dataset='syn', warp_input=False, export_task='train'
             pin_memory=True,
             num_workers=workers_test,
             worker_init_fn=worker_init_fn
-
         )
     return {'test_set': test_set, 'test_loader': test_loader}
 

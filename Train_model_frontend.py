@@ -237,7 +237,6 @@ class Train_model_frontend(object):
         loader for dataset, set from outside
         :return:
         """
-        print("get dataloader")
         return self._train_loader
 
     @train_loader.setter
@@ -247,7 +246,6 @@ class Train_model_frontend(object):
 
     @property
     def val_loader(self):
-        print("get dataloader")
         return self._val_loader
 
     @val_loader.setter
@@ -269,10 +267,11 @@ class Train_model_frontend(object):
         running_losses = []
         epoch = 0
         # Train one epoch
+
+
         while self.n_iter < self.max_iter:
-            print("epoch: ", epoch)
             epoch += 1
-            for i, sample_train in tqdm(enumerate(self.train_loader)):
+            for i, sample_train in tqdm(enumerate(self.train_loader), total=self.max_iter, desc=f'Epoch:{epoch} Batch'):
                 # train one sample
                 loss_out = self.train_val_sample(sample_train, self.n_iter, True)
                 self.n_iter += 1

@@ -3,6 +3,8 @@ import numpy as np
 import torch
 from pathlib import Path
 import torch.utils.data as data
+import torchvision.transforms as transforms
+
 
 # from .base_dataset import BaseDataset
 from settings import DATA_PATH, EXPER_PATH
@@ -44,13 +46,13 @@ class Coco(data.Dataset):
         }
     }
 
-    def __init__(self, export=False, transform=None, task='train', **config):
+    def __init__(self, export=False, task='train', **config):
 
         # Update config
         self.config = self.default_config
         self.config = dict_update(self.config, config)
 
-        self.transforms = transform
+        self.transform = transforms.Compose([transforms.ToTensor()])
         self.action = 'train' if task == 'train' else 'val'
 
         # get files
@@ -179,9 +181,7 @@ class Coco(data.Dataset):
             return input_image
 
         def _preprocess(image):
-            if self.transforms is not None:
-                image = self.transforms(image)
-            return image
+            return self.transform(image)
 
         def get_labels_gaussian(pnts, subpixel=False):
             heatmaps = np.zeros((H, W))
