@@ -261,28 +261,37 @@ class Train_model_frontend(object):
         :param options:
         :return:
         """
+
+
         # training info
         logging.info("n_iter: %d", self.n_iter)
         logging.info("max_iter: %d", self.max_iter)
         running_losses = []
         epoch = 0
-        # Train one epoch
 
 
         while self.n_iter < self.max_iter:
             epoch += 1
+
+
             for i, sample_train in tqdm(enumerate(self.train_loader), total=self.max_iter, desc=f'Epoch:{epoch} Batch'):
+                self.n_iter += 1
+
+
                 # train one sample
                 loss_out = self.train_val_sample(sample_train, self.n_iter, True)
-                self.n_iter += 1
                 running_losses.append(loss_out)
+
+
                 # run validation
                 if self._eval and self.n_iter % self.config["validation_interval"] == 0:
-                    logging.info("====== Validating...")
+                    logging.info("====== Validating ======")
                     for j, sample_val in enumerate(self.val_loader):
                         self.train_val_sample(sample_val, self.n_iter + j, False)
                         if j > self.config.get("validation_size", 3):
                             break
+
+
                 # save model
                 if self.n_iter % self.config["save_interval"] == 0:
                     logging.info(
@@ -291,13 +300,13 @@ class Train_model_frontend(object):
                         self.n_iter,
                     )
                     self.saveModel()
+
+
                 # ending condition
                 if self.n_iter > self.max_iter:
-                    # end training
                     logging.info("End training: %d", self.n_iter)
                     break
 
-        pass
 
     def getLabels(self, labels_2D, cell_size, device="cpu"):
         """
