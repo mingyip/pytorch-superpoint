@@ -189,6 +189,7 @@ class Train_model_heatmap(Train_model_frontend):
             add_dustbin=self.add_dustbin
         ).float().to(self.device)
 
+        mask_3D_flattened = self.getMasks(mask_2D, self.cell_size, device=self.device)
         loss = self.detector_loss(semi, labels_3D, mask_3D_flattened, self.det_loss_type)
 
         self.scalar_dict.update({"loss": loss})
