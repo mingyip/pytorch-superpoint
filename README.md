@@ -1,4 +1,4 @@
-# Superpoint for Event Camera data
+# Interest Point Detection for Event Camera data Using Superpoint
 
 
 <p align="center">
