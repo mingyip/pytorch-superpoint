@@ -77,7 +77,7 @@ python train4.py <train task> <config file> <export folder> --eval
     <th><h3>Dataset</h3></th>
     <th><h3>Intensity Image</h3></th>
     <th><h3>&nbsp;&nbsp;Event Data&nbsp;&nbsp;</h3></th>
-    <th><h3>&nbsp;&nbsp;&nbsp;&nbsp;Heamap&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</h3></th>
+    <th><h3>&nbsp;&nbsp;&nbsp;&nbsp;Heatmap&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</h3></th>
     <th><h3>Interest Points</h3></th>
   </tr>
 </thead>
