@@ -84,19 +84,19 @@ python train4.py <train task> <config file> <export folder> --eval
 <tbody>
   <tr>
     <td>boxes_6dof</td>
-    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/box_final.gif?raw=true" width="960px"></td>
+    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/box_final.gif?raw=true" width="640px"></td>
   </tr>
   <tr>
     <td>dynamic_6dof</td>
-    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/office_1_final.gif?raw=true" width="960px"></td>
+    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/office_1_final.gif?raw=true" width="640px"></td>
   </tr>
   <tr>
     <td>office_spiral</td>
-    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/office_2_final.gif?raw=true" width="960px"></td>
+    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/office_2_final.gif?raw=true" width="640px"></td>
   </tr>
   <tr>
     <td>urban</td>
-    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/urban_final.gif?raw=true" width="960px"></td>
+    <td colspan="4"><img src="https://github.com/mingyip/pytorch-superpoint/blob/master/images/urban_final.gif?raw=true" width="640px"></td>
   </tr>
 </tbody>
 </table>
